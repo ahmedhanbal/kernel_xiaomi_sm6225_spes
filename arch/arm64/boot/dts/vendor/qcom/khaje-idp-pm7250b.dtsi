@@ -94,7 +94,7 @@
 };
 
 &sde_dsi {
-	pinctrl-0 = <&sde_dsi_active &sde_te_active &disp_lcd_bias_en_default>;
+	pinctrl-0 = <&sde_dsi_active &sde_te_active &pm7250b_disp_lcd_bias_en_default>;
 };
 
 &dsi_td4330_truly_v2_video {
