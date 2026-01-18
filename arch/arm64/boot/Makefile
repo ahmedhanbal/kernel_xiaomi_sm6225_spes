@@ -71,7 +71,12 @@ $(obj)/Image.gz-dtb: $(obj)/Image.gz $(DTB_OBJS) FORCE
 	$(call if_changed,cat)
 
 $(obj)/dtbo.img: $(DTBO_OBJS) FORCE
+ifneq ($(DTBO_OBJS),)
 	$(call if_changed,mkdtimg)
+else
+	$(Q)echo "  SKIP    $@ (no dtbo files to package)"
+	$(Q)touch $@
+endif
 
 $(obj)/dtb.img: $(DTB_OBJS) FORCE
 	$(call if_changed,cat)
