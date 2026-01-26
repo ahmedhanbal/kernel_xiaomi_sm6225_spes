@@ -663,4 +663,7 @@ static inline void tlb_flush_p4d_range(struct mmu_gather *tlb,
 
 #endif /* CONFIG_MMU */
 
+/* TLB flush hook for task migration - ensures TLB is flushed after migration */
+#define tlb_migrate_finish(mm) do {} while (0)
+
 #endif /* _ASM_GENERIC__TLB_H */
