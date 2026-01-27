@@ -1,0 +1,126 @@
+name: Android Kernel Build (spes)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      # --------------------------
+      # 1️⃣ Checkout kernel + submodules
+      # --------------------------
+      - name: Checkout kernel + submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Ensure the KernelSU symlink exists
+      - name: Fix KernelSU symlink
+        run: |
+          ln -sf ../KernelSU-Next/kernel drivers/kernelsu
+
+      # --------------------------
+      # 2️⃣ Install dependencies
+      # --------------------------
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            bc bison build-essential \
+            curl flex git libssl-dev \
+            python3 rsync unzip \
+            gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi zip
+
+      # --------------------------
+      # 3️⃣ Cache Clang
+      # --------------------------
+      - name: Cache Clang
+        uses: actions/cache@v3
+        with:
+          path: clang
+          key: clang-r563880c
+
+      # --------------------------
+      # 4️⃣ Setup Clang (if cache miss)
+      # --------------------------
+      - name: Setup Google Clang r563880c
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir clang
+          curl -L \
+            https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-r563880c.tar.gz \
+            | tar -xz -C clang
+          echo "$PWD/clang/bin" >> $GITHUB_PATH
+
+      # --------------------------
+      # 5️⃣ Configure + Build both variants sequentially
+      # --------------------------
+      - name: Build both variants
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CC=clang
+          export LD=ld.lld
+          export LLVM=1
+          export LLVM_IAS=1
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+
+          for VARIANT in base ksu; do
+            echo "=============================="
+            echo "Building variant: $VARIANT"
+            echo "=============================="
+
+            # Local version
+            if [ "$VARIANT" = "ksu" ]; then
+              export LOCALVERSION=-hanbal-gfbase-ksunext
+            else
+              export LOCALVERSION=-hanbal-gfbase
+            fi
+
+            # Clean out previous build
+            rm -rf out
+
+            # Configure
+            make O=out vendor/spes-stock_defconfig
+            if [ "$VARIANT" = "ksu" ]; then
+              scripts/config --file out/.config -e KSU -e KPROBES -e KSU_KPROBE_HOOK
+            else
+              scripts/config --file out/.config -d KSU
+            fi
+            make O=out olddefconfig
+
+            # Build
+            make -j$(nproc) O=out Image.gz-dtb dtbo.img
+
+            # Clone AnyKernel
+            rm -rf anykernel
+            git clone --depth=1 https://github.com/ahmedhanbal/AnyKernel anykernel
+
+            # Copy kernel outputs
+            cp out/arch/arm64/boot/Image.gz-dtb anykernel/
+            cp out/arch/arm64/boot/dtbo.img anykernel/
+
+            # Patch AnyKernel
+            cd anykernel
+            sed -i "s/^kernel.string=.*/kernel.string=4.19.325-hanbal-gforce-$VARIANT/" anykernel.sh
+
+            # Package flashable zip
+            BUILD_DATE=$(date +%d%m%y)
+            ZIPNAME=Hanbal-gforce-$VARIANT-${BUILD_DATE}.zip
+            zip -r9 ../$ZIPNAME . -x ".*"
+            cd ..
+
+          done
+
+      # --------------------------
+      # 6️⃣ Upload artifacts
+      # --------------------------
+      - name: Upload flashable zips
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnyKernel zips
+          path: Hanbal-gforce-*.zip

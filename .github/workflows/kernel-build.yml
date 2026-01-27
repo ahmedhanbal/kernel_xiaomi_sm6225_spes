@@ -98,11 +98,13 @@ jobs:
             echo "Building variant: $VARIANT"
             echo "=============================="
 
-            # Clean previous build
-            rm -rf out
+            # Reset repository to clean state (but preserve out/ for faster builds)
+            git reset --hard HEAD
+            git clean -fdx -e out/ -e clang/ -e 'anykernel-*/'
+            # Keep out/ directory for incremental builds (speeds up "both" builds)
             mkdir -p out
 
-            # Clean KernelSU before setting up (important for both builds)
+            # Clean KernelSU files
             rm -rf KernelSU-Next
             rm -f drivers/kernelsu
 
@@ -110,7 +112,7 @@ jobs:
             if [ "$VARIANT" = "ksunext" ]; then
               echo "Setting up KernelSU-Next (legacy)..."
               curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
-              
+
               # Verify the setup
               if [ ! -f "drivers/kernelsu/Kconfig" ]; then
                 echo "Error: KernelSU Kconfig not found!"
@@ -118,20 +120,25 @@ jobs:
                 ls -la KernelSU-Next/ || true
                 exit 1
               fi
-              
+
               echo "KernelSU-Next setup complete"
             fi
 
-            # Copy defconfig
-            cp arch/arm64/configs/vendor/spes-stock_defconfig out/.config
+            # Only copy defconfig if .config doesn't exist (for incremental builds)
+            if [ ! -f "out/.config" ]; then
+              echo "Creating initial .config from defconfig"
+              cp arch/arm64/configs/vendor/spes-stock_defconfig out/.config
+            else
+              echo "Reusing existing .config for incremental build"
+            fi
 
             # Variant-specific config changes and LOCALVERSION
             if [ "$VARIANT" = "ksunext" ]; then
               scripts/config --file out/.config -e CONFIG_KSU
-              export LOCALVERSION=-hanbal-gforce-ksunext
+              export LOCALVERSION=-ksunext
             else
               scripts/config --file out/.config -d CONFIG_KSU
-              export LOCALVERSION=-hanbal-gforce-base
+              export LOCALVERSION=-base
             fi
 
             # Refresh config (handles all prompts automatically)
@@ -161,18 +168,25 @@ jobs:
           done
 
       # --------------------------
-      # 7️⃣ Upload flashable zips
+      # 7️⃣ Generate timestamp for artifact names
+      # --------------------------
+      - name: Generate timestamp
+        id: timestamp
+        run: echo "time=$(TZ='Asia/Karachi' date +'%d%m%y-%H%M%S')" >> $GITHUB_OUTPUT
+
+      # --------------------------
+      # 8️⃣ Upload flashable zips
       # --------------------------
       - name: Upload base zip
         if: ${{ github.event.inputs.variant == 'base' || github.event.inputs.variant == 'both' }}
         uses: actions/upload-artifact@v4
         with:
-          name: Hanbal-gforce-base
+          name: Hanbal-gforce-base-${{ steps.timestamp.outputs.time }}
           path: anykernel-base/
 
       - name: Upload ksunext zip
         if: ${{ github.event.inputs.variant == 'ksunext' || github.event.inputs.variant == 'both' }}
         uses: actions/upload-artifact@v4
         with:
-          name: Hanbal-gforce-ksunext
+          name: Hanbal-gforce-ksunext-${{ steps.timestamp.outputs.time }}
           path: anykernel-ksunext/
