@@ -1,0 +1,178 @@
+name: Build Recovery Flashable Zip
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: "Variant to build"
+        required: false
+        default: both
+        type: choice
+        options:
+          - base
+          - ksunext
+          - both
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      # --------------------------
+      # 1️⃣ Checkout kernel
+      # --------------------------
+      - name: Checkout kernel
+        uses: actions/checkout@v4
+
+      # --------------------------
+      # 2️⃣ Remove KernelSU-Next submodule if exists
+      # --------------------------
+      - name: Remove existing KernelSU-Next
+        run: |
+          rm -rf KernelSU-Next
+          rm -f drivers/kernelsu
+          echo "Cleaned up any existing KernelSU-Next"
+
+      # --------------------------
+      # 3️⃣ Install dependencies
+      # --------------------------
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            bc bison build-essential \
+            curl flex git libssl-dev \
+            python3 rsync unzip cpio\
+            gcc-aarch64-linux-gnu python-is-python3 \
+            gcc-arm-linux-gnueabi zip
+
+      # --------------------------
+      # 4️⃣ Cache Clang
+      # --------------------------
+      - name: Cache Clang
+        uses: actions/cache@v3
+        id: cache
+        with:
+          path: clang
+          key: clang-r563880c
+
+      # --------------------------
+      # 5️⃣ Setup Google Clang r563880c
+      # --------------------------
+      - name: Setup Google Clang r563880c
+        run: |
+          # Extract only if cache miss
+          if [ ! -d clang/bin ]; then
+            mkdir -p clang
+            curl -L \
+              https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-r563880c.tar.gz \
+              | tar -xz -C clang
+          fi
+
+          # Always add to PATH
+          echo "$PWD/clang/bin" >> $GITHUB_PATH
+
+      # --------------------------
+      # 6️⃣ Build function
+      # --------------------------
+      - name: Build kernel variants
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CC=clang
+          export LD=ld.lld
+          export LLVM=1
+          export LLVM_IAS=1
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+
+          VARIANTS=()
+          if [[ "${{ github.event.inputs.variant }}" == "both" ]]; then
+            VARIANTS=(base ksunext)
+          else
+            VARIANTS=(${{ github.event.inputs.variant }})
+          fi
+
+          for VARIANT in "${VARIANTS[@]}"; do
+            echo "=============================="
+            echo "Building variant: $VARIANT"
+            echo "=============================="
+
+            # Clean previous build
+            rm -rf out
+            mkdir -p out
+
+            # Clean KernelSU before setting up (important for both builds)
+            rm -rf KernelSU-Next
+            rm -f drivers/kernelsu
+
+            # Setup KernelSU-Next for ksunext variant
+            if [ "$VARIANT" = "ksunext" ]; then
+              echo "Setting up KernelSU-Next (legacy)..."
+              curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+              
+              # Verify the setup
+              if [ ! -f "drivers/kernelsu/Kconfig" ]; then
+                echo "Error: KernelSU Kconfig not found!"
+                ls -la drivers/ || true
+                ls -la KernelSU-Next/ || true
+                exit 1
+              fi
+              
+              echo "KernelSU-Next setup complete"
+            fi
+
+            # Copy defconfig
+            cp arch/arm64/configs/vendor/spes-stock_defconfig out/.config
+
+            # Variant-specific config changes and LOCALVERSION
+            if [ "$VARIANT" = "ksunext" ]; then
+              scripts/config --file out/.config -e CONFIG_KSU
+              export LOCALVERSION=-hanbal-gforce-ksunext
+            else
+              scripts/config --file out/.config -d CONFIG_KSU
+              export LOCALVERSION=-hanbal-gforce-base
+            fi
+
+            # Refresh config (handles all prompts automatically)
+            make O=out olddefconfig
+
+            # --------------------------
+            # Compile
+            # --------------------------
+            make -j$(nproc) O=out Image.gz-dtb dtbo.img
+
+            # --------------------------
+            # Prepare AnyKernel flashable zip (flat structure)
+            # --------------------------
+            ANYKERNEL_DIR="anykernel-$VARIANT"
+            rm -rf "$ANYKERNEL_DIR"
+            git clone --depth=1 https://github.com/ahmedhanbal/AnyKernel "$ANYKERNEL_DIR"
+
+            cp out/arch/arm64/boot/Image.gz-dtb "$ANYKERNEL_DIR/"
+            cp out/arch/arm64/boot/dtbo.img "$ANYKERNEL_DIR/"
+
+            # Patch kernel string in anykernel.sh
+            sed -i "s/^kernel.string=.*/kernel.string=4.19.325-hanbal-gforce-$VARIANT/" "$ANYKERNEL_DIR/anykernel.sh"
+
+            # Clean up .git files from AnyKernel
+            rm -rf "$ANYKERNEL_DIR/.git" "$ANYKERNEL_DIR/.gitignore" "$ANYKERNEL_DIR/.gitattributes"
+
+          done
+
+      # --------------------------
+      # 7️⃣ Upload flashable zips
+      # --------------------------
+      - name: Upload base zip
+        if: ${{ github.event.inputs.variant == 'base' || github.event.inputs.variant == 'both' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hanbal-gforce-base
+          path: anykernel-base/
+
+      - name: Upload ksunext zip
+        if: ${{ github.event.inputs.variant == 'ksunext' || github.event.inputs.variant == 'both' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hanbal-gforce-ksunext
+          path: anykernel-ksunext/
