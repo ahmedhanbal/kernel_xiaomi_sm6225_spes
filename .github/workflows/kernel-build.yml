@@ -12,14 +12,6 @@ on:
           - base
           - ksunext
           - both
-      ksunext_branch:
-        description: "KernelSU-Next branch (for ksunext variant)"
-        required: false
-        default: legacy
-        type: choice
-        options:
-          - legacy
-          - stable
 
 jobs:
   build:
@@ -101,15 +93,9 @@ jobs:
             VARIANTS=(${{ github.event.inputs.variant }})
           fi
 
-          # Get the selected branch
-          KSUNEXT_BRANCH="${{ github.event.inputs.ksunext_branch }}"
-
           for VARIANT in "${VARIANTS[@]}"; do
             echo "=============================="
             echo "Building variant: $VARIANT"
-            if [ "$VARIANT" = "ksunext" ]; then
-              echo "KernelSU-Next branch: $KSUNEXT_BRANCH"
-            fi
             echo "=============================="
 
             # Reset repository to clean state (but preserve out/ for faster builds)
@@ -124,8 +110,8 @@ jobs:
 
             # Setup KernelSU-Next for ksunext variant
             if [ "$VARIANT" = "ksunext" ]; then
-              echo "Setting up KernelSU-Next ($KSUNEXT_BRANCH branch)..."
-              curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s "$KSUNEXT_BRANCH"
+              echo "Setting up KernelSU-Next (legacy)..."
+              curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
               # Verify the setup
               if [ ! -f "drivers/kernelsu/Kconfig" ]; then
@@ -135,7 +121,7 @@ jobs:
                 exit 1
               fi
 
-              echo "KernelSU-Next setup complete with $KSUNEXT_BRANCH branch"
+              echo "KernelSU-Next setup complete"
             fi
 
             # Only copy defconfig if .config doesn't exist (for incremental builds)
@@ -149,7 +135,7 @@ jobs:
             # Variant-specific config changes and LOCALVERSION
             if [ "$VARIANT" = "ksunext" ]; then
               scripts/config --file out/.config -e CONFIG_KSU
-              export LOCALVERSION=-ksunext-$KSUNEXT_BRANCH
+              export LOCALVERSION=-ksunext
             else
               scripts/config --file out/.config -d CONFIG_KSU
               export LOCALVERSION=-base
@@ -167,10 +153,6 @@ jobs:
             # Prepare AnyKernel flashable zip (flat structure)
             # --------------------------
             ANYKERNEL_DIR="anykernel-$VARIANT"
-            if [ "$VARIANT" = "ksunext" ]; then
-              ANYKERNEL_DIR="anykernel-$VARIANT-$KSUNEXT_BRANCH"
-            fi
-            
             rm -rf "$ANYKERNEL_DIR"
             git clone --depth=1 https://github.com/ahmedhanbal/AnyKernel "$ANYKERNEL_DIR"
 
@@ -178,11 +160,7 @@ jobs:
             cp out/arch/arm64/boot/dtbo.img "$ANYKERNEL_DIR/"
 
             # Patch kernel string in anykernel.sh
-            if [ "$VARIANT" = "ksunext" ]; then
-              sed -i "s/^kernel.string=.*/kernel.string=4.19.325-hanbal-gforce-$VARIANT-$KSUNEXT_BRANCH/" "$ANYKERNEL_DIR/anykernel.sh"
-            else
-              sed -i "s/^kernel.string=.*/kernel.string=4.19.325-hanbal-gforce-$VARIANT/" "$ANYKERNEL_DIR/anykernel.sh"
-            fi
+            sed -i "s/^kernel.string=.*/kernel.string=4.19.325-hanbal-gforce-$VARIANT/" "$ANYKERNEL_DIR/anykernel.sh"
 
             # Clean up .git files from AnyKernel
             rm -rf "$ANYKERNEL_DIR/.git" "$ANYKERNEL_DIR/.gitignore" "$ANYKERNEL_DIR/.gitattributes"
@@ -210,5 +188,5 @@ jobs:
         if: ${{ github.event.inputs.variant == 'ksunext' || github.event.inputs.variant == 'both' }}
         uses: actions/upload-artifact@v4
         with:
-          name: Hanbal-gforce-ksunext-${{ github.event.inputs.ksunext_branch }}-${{ steps.timestamp.outputs.time }}
-          path: anykernel-ksunext-${{ github.event.inputs.ksunext_branch }}/
+          name: Hanbal-gforce-ksunext-${{ steps.timestamp.outputs.time }}
+          path: anykernel-ksunext/
