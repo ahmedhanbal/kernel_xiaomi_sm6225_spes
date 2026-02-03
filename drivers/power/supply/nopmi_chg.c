@@ -180,11 +180,11 @@ static int nopmi_get_batt_health(struct nopmi_chg *nopmi_chg)
 static void nopmi_update_vbat(struct nopmi_chg *nopmi_chg)
 {
 	union power_supply_propval pval = {0, };
+	int ret;
 
-	if (power_supply_get_property(nopmi_chg->bms_psy,
-			POWER_SUPPLY_PROP_VOLTAGE_NOW, &pval) < 0)
-		nopmi_chg->vbat_mv = 0;
-	else
+	ret = power_supply_get_property(nopmi_chg->bms_psy,
+			POWER_SUPPLY_PROP_VOLTAGE_NOW, &pval);
+	if (!ret)
 		nopmi_chg->vbat_mv = pval.intval / 1000;
 }
 
@@ -483,29 +483,6 @@ static int get_real_type(void)
 }
 #endif
 
-static void nopmi_handle_work(struct nopmi_chg *nopmi_chg, int online)
-{
-	if (!nopmi_chg)
-		return;
-
-	if (NOPMI_CHARGER_IC_NONE == nopmi_get_charger_ic_type() || NOPMI_CHARGER_IC_MAX  == nopmi_get_charger_ic_type())
-		return;
-
-	if (online && !nopmi_chg->is_awake) {
-		pm_stay_awake(nopmi_chg->dev);
-		start_nopmi_chg_workfunc();
-		nopmi_chg->is_awake = true;
-		power_supply_changed(nopmi_chg->usb_psy);
-		pr_info("USB connected, stay awake\n");
-	} else if (!online && nopmi_chg->is_awake) {
-		stop_nopmi_chg_workfunc();
-		pm_relax(nopmi_chg->dev);
-		nopmi_chg->is_awake = false;
-		power_supply_changed(nopmi_chg->usb_psy);
-		pr_info("USB disconnected, relax wakelock\n");
-	}
-}
-
 /************************
  * USB PSY REGISTRATION *
  ************************/
@@ -633,7 +610,6 @@ static int nopmi_usb_get_prop(struct power_supply *psy,
 {
 	struct nopmi_chg *nopmi_chg = power_supply_get_drvdata(psy);
 	int ret = 0;
-	static int last_online;
 
 	if (NOPMI_CHARGER_IC_MAXIM == nopmi_get_charger_ic_type()) {
 		ret = max77729_usb_get_property(psy, psp, val);
@@ -660,9 +636,20 @@ static int nopmi_usb_get_prop(struct power_supply *psy,
 		if (val->intval == 1 && g_nopmi_chg->vbat_mv < 3300)
 			val->intval = 0;
 
-		if (last_online != val->intval) {
-			nopmi_handle_work(g_nopmi_chg, val->intval);
-			last_online = val->intval;
+		if (NOPMI_CHARGER_IC_NONE != nopmi_get_charger_ic_type() && NOPMI_CHARGER_IC_MAX != nopmi_get_charger_ic_type()) {
+			if (val->intval == 1 && !g_nopmi_chg->is_awake) {
+				pm_stay_awake(g_nopmi_chg->dev);
+				start_nopmi_chg_workfunc();
+				g_nopmi_chg->is_awake = true;
+				power_supply_changed(nopmi_chg->usb_psy);
+				pr_info("USB connected, stay awake\n");
+			} else if (val->intval == 0 && g_nopmi_chg->is_awake) {
+				stop_nopmi_chg_workfunc();
+				pm_relax(g_nopmi_chg->dev);
+				g_nopmi_chg->is_awake = false;
+				power_supply_changed(nopmi_chg->usb_psy);
+				pr_info("USB disconnected, relax wakelock\n");
+			}
 		}
 		ret = 0;
 		break;
