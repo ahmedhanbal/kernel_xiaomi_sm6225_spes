@@ -7,13 +7,13 @@
 
 enum bq2589x_vbus_type {
 	BQ2589X_VBUS_NONE,
-	BQ2589X_VBUS_USB_SDP,//5V/500MA
-	BQ2589X_VBUS_USB_CDP, /*CDP for bq25890, Adapter for bq25892*///5V/1A
-	BQ2589X_VBUS_USB_DCP,//5V/2A
-	BQ2589X_VBUS_MAXC,//HVDCP	9V/1A
-	BQ2589X_VBUS_UNKNOWN,//5V/500MA
-	BQ2589X_VBUS_NONSTAND,//float 5V/1A
-	BQ2589X_VBUS_OTG,//5V/
+	BQ2589X_VBUS_USB_SDP, // 5V/500MA
+	BQ2589X_VBUS_USB_CDP, // CDP for bq25890, Adapter for bq25892: 5V/1A
+	BQ2589X_VBUS_USB_DCP, // 5V/2A
+	BQ2589X_VBUS_MAXC, // HVDCP 9V/1A
+	BQ2589X_VBUS_UNKNOWN, // 5V/500MA
+	BQ2589X_VBUS_NONSTAND, // float 5V/1A
+	BQ2589X_VBUS_OTG, // 5V
 	BQ2589X_VBUS_TYPE_NUM,
 };
 
@@ -28,7 +28,7 @@ enum bq2589x_part_no {
 
 #define BQ2589X_STATUS_PLUGIN		0x0001
 #define BQ2589X_STATUS_PG			0x0002
-#define	BQ2589X_STATUS_CHARGE_ENABLE 0x0004
+#define BQ2589X_STATUS_CHARGE_ENABLE	0x0004
 #define BQ2589X_STATUS_FAULT		0x0008
 
 #define BQ2589X_STATUS_EXIST		0x0100
@@ -62,7 +62,7 @@ struct adapter_power_cap {
 
 struct bq2589x_config {
 	bool	enable_auto_dpdm;
-/*	bool	enable_12v;*/
+	/*bool	enable_12v;*/
 
 	int		charge_voltage;
 	int		charge_current;
@@ -83,25 +83,25 @@ struct bq2589x_config {
 struct bq2589x {
 	struct device *dev;
 	struct i2c_client *client;
-	enum   bq2589x_part_no part_no;
+	enum bq2589x_part_no part_no;
 
 	struct tcpc_device *tcpc_dev;
 	struct notifier_block pd_nb;
 
-	int    revision;
-	unsigned int    status;
+	int		revision;
+	unsigned int	status;
 	int		vbus_type;
 	int		vbus_volt;
 	int		vbat_volt;
 	int		chg_current;
 	int		rsoc;
-	int pd_active;
+	int		pd_active;
 	bool	enabled;
 
 	struct mutex i2c_rw_lock;
 	struct mutex usb_switch_lock;
 
-	struct	bq2589x_config	cfg;
+	struct bq2589x_config cfg;
 	struct work_struct irq_work;
 	struct work_struct adapter_in_work;
 	struct work_struct adapter_out_work;
@@ -128,7 +128,7 @@ struct bq2589x {
 	struct votable		*fv_votable;
 	struct votable		*usb_icl_votable;
 	struct votable		*chg_dis_votable;
-        //struct votable		*chgctrl_votable;
+	//struct votable		*chgctrl_votable;
 
 	enum power_supply_type chg_type;
 	bool chg_online; 
@@ -144,11 +144,11 @@ struct pe_ctrl {
 	bool tune_down_volt;
 	bool tune_done;
 	bool tune_fail;
-	int  tune_count;
-	int  target_volt;
-	int	 high_volt_level;/* vbus volt > this threshold means tune up successfully */
-	int  low_volt_level; /* vbus volt < this threshold means tune down successfully */
-	int  vbat_min_volt;  /* to tune up voltage only when vbat > this threshold */
+	int tune_count;
+	int target_volt;
+	int high_volt_level; /* vbus volt > this threshold means tune up successfully */
+	int low_volt_level; /* vbus volt < this threshold means tune down successfully */
+	int vbat_min_volt; /* to tune up voltage only when vbat > this threshold */
 };
 
 extern int main_set_hiz_mode(bool en);
