@@ -756,7 +756,7 @@ static unsigned int fg_read_ocv(struct sm_fg_chip *sm)
 {
 	int ret;
 	u16 data = 0;
-	unsigned int ocv; // = 3500; 3500 means 3500mV
+	unsigned int ocv; // = 3500; /*3500 means 3500mV*/
 
 	ret = fg_read_word(sm, sm->regs[SM_FG_REG_OCV], &data);
 	if (ret < 0) {
@@ -885,11 +885,11 @@ static int __calculate_battery_temp_ex(struct sm_fg_chip *sm, u16 uval)
 	curr = fg_read_current(sm); // must return mA
 	if (curr > 0) {
 		/* rtrace: uohm: 7200uohm = 7.2mohm */
-		if (curr <= 1750) {
+		if (curr <= 1500) {
 			rtrace = sm->rtrace;
 		} else if (curr <= 3000) {
 			rtrace = sm->rtrace * 2;
-		} else if (curr <= 4250) {
+		} else if (curr <= 4500) {
 			rtrace = sm->rtrace * 3;
 		} else {
 			rtrace = 7200;
