@@ -256,7 +256,7 @@
 
 /* Register 0x0B*/
 #define BQ2589X_REG_0B              0x0B
-#define BQ2589X_VBUS_STAT_MASK      0xE0           
+#define BQ2589X_VBUS_STAT_MASK      0xE0
 #define BQ2589X_VBUS_STAT_SHIFT     5
 #define BQ2589X_CHRG_STAT_MASK      0x18
 #define BQ2589X_CHRG_STAT_SHIFT     3
@@ -301,7 +301,7 @@
 
 /* Register 0x0D*/
 #define BQ2589X_REG_0D              0x0D
-#define BQ2589X_FORCE_VINDPM_MASK   0x80        
+#define BQ2589X_FORCE_VINDPM_MASK   0x80
 #define BQ2589X_FORCE_VINDPM_SHIFT  7
 #define BQ2589X_FORCE_VINDPM_ENABLE 1
 #define BQ2589X_FORCE_VINDPM_DISABLE 0
@@ -369,7 +369,7 @@
 
 /* Register 0x14*/
 #define BQ2589X_REG_14              0x14
-#define BQ2589X_RESET_MASK          0x80             
+#define BQ2589X_RESET_MASK          0x80
 #define BQ2589X_RESET_SHIFT         7
 #define BQ2589X_RESET               1
 #define BQ2589X_ICO_OPTIMIZED_MASK  0x40
@@ -380,8 +380,5 @@
 #define BQ2589X_TS_PROFILE_SHIFT    2
 #define BQ2589X_DEV_REV_MASK        0x03
 #define BQ2589X_DEV_REV_SHIFT       0
-
-
-
 
 #endif
