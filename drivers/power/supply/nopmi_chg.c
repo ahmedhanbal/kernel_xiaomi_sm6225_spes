@@ -50,7 +50,7 @@ int set_prop_battery_charging_enabled(struct votable *usb_icl_votable,
 EXPORT_SYMBOL_GPL(get_prop_battery_charging_enabled);
 EXPORT_SYMBOL_GPL(set_prop_battery_charging_enabled);
 
-/*static int nopmi_set_prop_input_suspend(struct nopmi_chg *nopmi_chg,
+static int nopmi_set_prop_input_suspend(struct nopmi_chg *nopmi_chg,
 		const union power_supply_propval *val)
 {
 	int rc;
@@ -65,49 +65,6 @@ EXPORT_SYMBOL_GPL(set_prop_battery_charging_enabled);
 	nopmi_chg->input_suspend = !!(val->intval);
 
 	return rc;
-}*/
-
-static int nopmi_set_prop_input_suspend(struct nopmi_chg *nopmi_chg,
-		const union power_supply_propval *val)
-{
-	int rc = 0;
-	bool suspend = !!val->intval;
-	bool is_maxim = (NOPMI_CHARGER_IC_MAXIM == nopmi_get_charger_ic_type());
-	struct votable *chg_votable;
-
-	if (!nopmi_chg->usb_icl_votable)
-		nopmi_chg->usb_icl_votable = find_votable("USB_ICL");
-	if (!nopmi_chg->fcc_votable)
-		nopmi_chg->fcc_votable = find_votable("FCC");
-
-	if (is_maxim) {
-		if (!nopmi_chg->chgctrl_votable)
-			nopmi_chg->chgctrl_votable = find_votable("CHG_CTRL");
-		chg_votable = nopmi_chg->chgctrl_votable;
-	} else {
-		if (!nopmi_chg->chg_dis_votable)
-			nopmi_chg->chg_dis_votable = find_votable("CHG_DISABLE");
-		chg_votable = nopmi_chg->chg_dis_votable;
-	}
-
-	if (!nopmi_chg->usb_icl_votable || !nopmi_chg->fcc_votable || !chg_votable) {
-		pr_err("missing votable(s), cannot %s input suspend\n", suspend ? "apply" : "clear");
-		return -ENODEV;
-	}
-
-	pr_info("input suspend: %s suspend votes\n", suspend ? "applying" : "clearing");
-
-	rc = vote(nopmi_chg->fcc_votable, CHG_INPUT_SUSPEND_VOTER, suspend, 0);
-	rc |= vote(nopmi_chg->usb_icl_votable, CHG_INPUT_SUSPEND_VOTER, suspend, suspend ? MAIN_ICL_MIN : 0);
-	rc |= vote(chg_votable, CHG_INPUT_SUSPEND_VOTER, suspend, is_maxim ? CHG_MODE_CHARGING_OFF : 0);
-
-	if (rc < 0) {
-		pr_err("couldn't %s input suspend votes, rc=%d\n", suspend ? "apply" : "clear", rc);
-		return rc;
-	}
-
-	nopmi_chg->input_suspend = suspend;
-	return 0;
 }
 
 static int nopmi_set_prop_system_temp_level(struct nopmi_chg *nopmi_chg,
@@ -223,11 +180,11 @@ static int nopmi_get_batt_health(struct nopmi_chg *nopmi_chg)
 static void nopmi_update_vbat(struct nopmi_chg *nopmi_chg)
 {
 	union power_supply_propval pval = {0, };
+	int ret;
 
-	if (power_supply_get_property(nopmi_chg->bms_psy,
-			POWER_SUPPLY_PROP_VOLTAGE_NOW, &pval) < 0)
-		nopmi_chg->vbat_mv = 0;
-	else
+	ret = power_supply_get_property(nopmi_chg->bms_psy,
+			POWER_SUPPLY_PROP_VOLTAGE_NOW, &pval);
+	if (!ret)
 		nopmi_chg->vbat_mv = pval.intval / 1000;
 }
 
@@ -526,29 +483,6 @@ static int get_real_type(void)
 }
 #endif
 
-static void nopmi_handle_work(struct nopmi_chg *nopmi_chg, int online)
-{
-	if (!nopmi_chg)
-		return;
-
-	if (NOPMI_CHARGER_IC_NONE == nopmi_get_charger_ic_type() || NOPMI_CHARGER_IC_MAX == nopmi_get_charger_ic_type())
-		return;
-
-	if (online && !nopmi_chg->is_awake) {
-		pm_stay_awake(nopmi_chg->dev);
-		start_nopmi_chg_workfunc();
-		nopmi_chg->is_awake = true;
-		power_supply_changed(nopmi_chg->usb_psy);
-		pr_info("USB connected, stay awake\n");
-	} else if (!online && nopmi_chg->is_awake) {
-		stop_nopmi_chg_workfunc();
-		pm_relax(nopmi_chg->dev);
-		nopmi_chg->is_awake = false;
-		power_supply_changed(nopmi_chg->usb_psy);
-		pr_info("USB disconnected, relax wakelock\n");
-	}
-}
-
 /************************
  * USB PSY REGISTRATION *
  ************************/
@@ -676,7 +610,6 @@ static int nopmi_usb_get_prop(struct power_supply *psy,
 {
 	struct nopmi_chg *nopmi_chg = power_supply_get_drvdata(psy);
 	int ret = 0;
-	static int last_online;
 
 	if (NOPMI_CHARGER_IC_MAXIM == nopmi_get_charger_ic_type()) {
 		ret = max77729_usb_get_property(psy, psp, val);
@@ -703,9 +636,20 @@ static int nopmi_usb_get_prop(struct power_supply *psy,
 		if (val->intval == 1 && g_nopmi_chg->vbat_mv < 3300)
 			val->intval = 0;
 
-		if (last_online != val->intval) {
-			nopmi_handle_work(g_nopmi_chg, val->intval);
-			last_online = val->intval;
+		if (NOPMI_CHARGER_IC_NONE != nopmi_get_charger_ic_type() && NOPMI_CHARGER_IC_MAX != nopmi_get_charger_ic_type()) {
+			if (val->intval == 1 && !g_nopmi_chg->is_awake) {
+				pm_stay_awake(g_nopmi_chg->dev);
+				start_nopmi_chg_workfunc();
+				g_nopmi_chg->is_awake = true;
+				power_supply_changed(nopmi_chg->usb_psy);
+				pr_info("USB connected, stay awake\n");
+			} else if (val->intval == 0 && g_nopmi_chg->is_awake) {
+				stop_nopmi_chg_workfunc();
+				pm_relax(g_nopmi_chg->dev);
+				g_nopmi_chg->is_awake = false;
+				power_supply_changed(nopmi_chg->usb_psy);
+				pr_info("USB disconnected, relax wakelock\n");
+			}
 		}
 		ret = 0;
 		break;
@@ -1370,12 +1314,6 @@ static int nopmi_chg_probe(struct platform_device *pdev)
 	nopmi_chg->fcc_votable = find_votable("FCC");
 	nopmi_chg->fv_votable = find_votable("FV");
 	nopmi_chg->usb_icl_votable = find_votable("USB_ICL");
-	if (NOPMI_CHARGER_IC_MAXIM == nopmi_get_charger_ic_type())
-		// maxim chip related
-		nopmi_chg->chgctrl_votable = find_votable("CHG_CTRL");
-	else
-		// other chip related
-		nopmi_chg->chg_dis_votable = find_votable("CHG_DISABLE");
 #endif
 	nopmi_chg_jeita_init(&nopmi_chg->jeita_ctl);
 	schedule_delayed_work(&nopmi_chg->nopmi_chg_work,
