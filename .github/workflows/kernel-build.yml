@@ -10,7 +10,7 @@ on:
         type: choice
         options:
           - base
-          - ksunext
+          - suNext
           - both
 
 jobs:
@@ -19,13 +19,13 @@ jobs:
 
     steps:
       # --------------------------
-      # 1️⃣ Checkout kernel
+      # Checkout kernel
       # --------------------------
       - name: Checkout kernel
         uses: actions/checkout@v4
 
       # --------------------------
-      # 2️⃣ Remove KernelSU-Next submodule if exists
+      # Remove KernelSU-Next submodule if exists
       # --------------------------
       - name: Remove existing KernelSU-Next
         run: |
@@ -34,7 +34,7 @@ jobs:
           echo "Cleaned up any existing KernelSU-Next"
 
       # --------------------------
-      # 3️⃣ Install dependencies
+      # Install dependencies
       # --------------------------
       - name: Install dependencies
         run: |
@@ -47,7 +47,7 @@ jobs:
             gcc-arm-linux-gnueabi zip
 
       # --------------------------
-      # 4️⃣ Cache Clang
+      # Cache Clang
       # --------------------------
       - name: Cache Clang
         uses: actions/cache@v3
@@ -57,8 +57,8 @@ jobs:
           key: clang-r563880c
 
       # --------------------------
-      # 5️⃣ Setup Google Clang r563880c
-      # --------------------------
+      # Setup Google Clang r563880c
+      # ----------  ----------------
       - name: Setup Google Clang r563880c
         run: |
           # Extract only if cache miss
@@ -73,7 +73,7 @@ jobs:
           echo "$PWD/clang/bin" >> $GITHUB_PATH
 
       # --------------------------
-      # 6️⃣ Build function
+      # Build function
       # --------------------------
       - name: Build kernel variants
         run: |
@@ -88,7 +88,7 @@ jobs:
 
           VARIANTS=()
           if [[ "${{ github.event.inputs.variant }}" == "both" ]]; then
-            VARIANTS=(base ksunext)
+            VARIANTS=(base suNext)
           else
             VARIANTS=(${{ github.event.inputs.variant }})
           fi
@@ -108,8 +108,8 @@ jobs:
             rm -rf KernelSU-Next
             rm -f drivers/kernelsu
 
-            # Setup KernelSU-Next for ksunext variant
-            if [ "$VARIANT" = "ksunext" ]; then
+            # Setup KernelSU-Next for suNext variant
+            if [ "$VARIANT" = "suNext" ]; then
               echo "Setting up KernelSU-Next (legacy)..."
               curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
@@ -133,9 +133,9 @@ jobs:
             fi
 
             # Variant-specific config changes and LOCALVERSION
-            if [ "$VARIANT" = "ksunext" ]; then
+            if [ "$VARIANT" = "suNext" ]; then
               scripts/config --file out/.config -e CONFIG_KSU
-              export LOCALVERSION=-ksunext
+              export LOCALVERSION=-suNext
             else
               scripts/config --file out/.config -d CONFIG_KSU
               export LOCALVERSION=-base
@@ -168,14 +168,14 @@ jobs:
           done
 
       # --------------------------
-      # 7️⃣ Generate timestamp for artifact names
+      # Generate timestamp for artifact names
       # --------------------------
       - name: Generate timestamp
         id: timestamp
         run: echo "time=$(TZ='Asia/Karachi' date +'%d%m%y-%H%M%S')" >> $GITHUB_OUTPUT
 
       # --------------------------
-      # 8️⃣ Upload flashable zips
+      # Upload flashable zips
       # --------------------------
       - name: Upload base zip
         if: ${{ github.event.inputs.variant == 'base' || github.event.inputs.variant == 'both' }}
@@ -184,9 +184,9 @@ jobs:
           name: Hanbal-gforce-base-${{ steps.timestamp.outputs.time }}
           path: anykernel-base/
 
-      - name: Upload ksunext zip
-        if: ${{ github.event.inputs.variant == 'ksunext' || github.event.inputs.variant == 'both' }}
+      - name: Upload suNext zip
+        if: ${{ github.event.inputs.variant == 'suNext' || github.event.inputs.variant == 'both' }}
         uses: actions/upload-artifact@v4
         with:
-          name: Hanbal-gforce-ksunext-${{ steps.timestamp.outputs.time }}
-          path: anykernel-ksunext/
+          name: Hanbal-gforce-suNext-${{ steps.timestamp.outputs.time }}
+          path: anykernel-suNext/
