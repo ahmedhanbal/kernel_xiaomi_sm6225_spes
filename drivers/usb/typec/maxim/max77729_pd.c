@@ -126,12 +126,12 @@ void max77729_select_pdo(int num)
 	/* if (pd_data->pd_noti.sink_status.current_pdo_num == pd_data->pd_noti.sink_status.selected_pdo_num) { */
 		/* max77729_process_pd(g_usbc_data); */
 	/* } else { */
-		g_usbc_data->pn_flag = false;
-		value.opcode = OPCODE_SRCCAP_REQUEST;
-		value.write_data[0] = temp;
-		value.write_length = 1;
-		value.read_length = 1;
-		max77729_usbc_opcode_write(g_usbc_data, &value);
+	g_usbc_data->pn_flag = false;
+	value.opcode = OPCODE_SRCCAP_REQUEST;
+	value.write_data[0] = temp;
+	value.write_length = 1;
+	value.read_length = 1;
+	max77729_usbc_opcode_write(g_usbc_data, &value);
 	/* } */
 
 	pr_info("%s : OPCODE(0x%02x) W_LENGTH(%d) R_LENGTH(%d) NUM(%d)\n",
