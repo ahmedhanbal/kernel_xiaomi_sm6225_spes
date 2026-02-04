@@ -116,8 +116,8 @@ static struct hid_descriptor hidg_desc = {
 	.bcdHID				= cpu_to_le16(0x0101),
 	.bCountryCode			= 0x00,
 	.bNumDescriptors		= 0x1,
-	/*.rpt_desc.bDescriptorType	= DYNAMIC */
-	/*.rpt_desc.wDescriptorLength	= DYNAMIC */
+	/*.desc[0].bDescriptorType	= DYNAMIC */
+	/*.desc[0].wDescriptorLenght	= DYNAMIC */
 };
 
 /* Super-Speed Support */
@@ -455,11 +455,6 @@ static ssize_t f_hidg_write(struct file *file, const char __user *buffer,
 
 	spin_lock_irqsave(&hidg->write_spinlock, flags);
 
-	if (!hidg->req) {
-		spin_unlock_irqrestore(&hidg->write_spinlock, flags);
-		return -ESHUTDOWN;
-	}
-
 #define WRITE_COND (!hidg->write_pending || !hidg->bound)
 try_again:
 	/* write queue */
@@ -576,7 +571,8 @@ static void hidg_destroy(struct kref *kref)
 {
 	struct f_hidg *hidg = container_of(kref, struct f_hidg, kref);
 
-	put_device(&hidg->dev);
+	kfree(hidg->report_desc);
+	kfree(hidg);
 }
 
 static int f_hidg_release(struct inode *inode, struct file *fd)
@@ -737,10 +733,8 @@ static int hidg_setup(struct usb_function *f,
 	case ((USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE) << 8
 		  | HID_REQ_SET_REPORT):
 		VDBG(cdev, "set_report | wLength=%d\n", ctrl->wLength);
-		if (hidg->use_out_ep)
-			goto stall;
+		req->context = hidg;
 		req->complete = hidg_ssreport_complete;
-		req->context  = hidg;
 		goto respond;
 		break;
 
@@ -777,8 +771,8 @@ static int hidg_setup(struct usb_function *f,
 			struct hid_descriptor hidg_desc_copy = hidg_desc;
 
 			VDBG(cdev, "USB_REQ_GET_DESCRIPTOR: HID\n");
-			hidg_desc_copy.rpt_desc.bDescriptorType = HID_DT_REPORT;
-			hidg_desc_copy.rpt_desc.wDescriptorLength =
+			hidg_desc_copy.desc[0].bDescriptorType = HID_DT_REPORT;
+			hidg_desc_copy.desc[0].wDescriptorLength =
 				cpu_to_le16(hidg->report_desc_length);
 
 			length = min_t(unsigned short, length,
@@ -1019,8 +1013,8 @@ static int hidg_bind(struct usb_configuration *c, struct usb_function *f)
 	 * We can use hidg_desc struct here but we should not relay
 	 * that its content won't change after returning from this function.
 	 */
-	hidg_desc.rpt_desc.bDescriptorType = HID_DT_REPORT;
-	hidg_desc.rpt_desc.wDescriptorLength =
+	hidg_desc.desc[0].bDescriptorType = HID_DT_REPORT;
+	hidg_desc.desc[0].wDescriptorLength =
 		cpu_to_le16(hidg->report_desc_length);
 
 	hidg_hs_in_ep_desc.bEndpointAddress =

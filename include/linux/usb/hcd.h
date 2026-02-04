@@ -386,8 +386,7 @@ struct hc_driver {
 		 */
 	void	(*reset_bandwidth)(struct usb_hcd *, struct usb_device *);
 		/* Set the hardware-chosen device address */
-	int	(*address_device)(struct usb_hcd *, struct usb_device *udev,
-				  unsigned int timeout_ms);
+	int	(*address_device)(struct usb_hcd *, struct usb_device *udev);
 		/* prepares the hardware to send commands to the device */
 	int	(*enable_device)(struct usb_hcd *, struct usb_device *udev);
 		/* Notifies the HCD after a hub descriptor is fetched.
