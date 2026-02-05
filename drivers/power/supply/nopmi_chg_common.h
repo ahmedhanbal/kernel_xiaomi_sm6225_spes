@@ -30,6 +30,7 @@ struct quick_charge {
 	enum quick_charge_type adap_cap;
 };
 
+
 int nopmi_chg_is_usb_present(struct power_supply *usb_psy);
 
 char nopmi_set_charger_ic_type(NOPMI_CHARGER_IC_TYPE nopmi_type);

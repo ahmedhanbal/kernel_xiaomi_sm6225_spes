@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2020 The Linux Foundation. All rights reserved.
  */
 
 #define pr_fmt(fmt) "SMB1398: %s: " fmt, __func__
@@ -248,7 +247,6 @@
 #define COMBO_PRE_REGULATOR		2
 #define SMB1394_DIV2_CP_PRY		3
 #define SMB1394_DIV2_CP_SECY		4
-#define SMB1398_MAX_IIN			5000
 
 #define IS_SMB1394(role) \
 	(role == SMB1394_DIV2_CP_PRY || role == SMB1394_DIV2_CP_SECY)
@@ -441,9 +439,6 @@ static int smb1398_set_iin_ma(struct smb1398_chip *chip, int iin_ma)
 {
 	int rc = 0;
 	u8 val;
-
-	if (iin_ma > SMB1398_MAX_IIN)
-		iin_ma = SMB1398_MAX_IIN;
 
 	val = iin_ma / IIN_STEP_MA;
 	rc = smb1398_masked_write(chip, IIN_SS_DAC_TARGET_REG,
@@ -1720,10 +1715,6 @@ static void smb1398_status_change_work(struct work_struct *work)
 		chip->usb_present = !!pval.intval;
 		if (!chip->usb_present) /* USB has been removed */
 			smb1398_toggle_uvlo(chip);
-		pval.intval = 1;
-		if (is_cps_available(chip))
-			power_supply_set_property(chip->div2_cp_slave_psy,
-				POWER_SUPPLY_PROP_CP_TOGGLE_SWITCHER, &pval);
 	}
 
 	rc = power_supply_get_property(chip->usb_psy,
@@ -2283,7 +2274,6 @@ static enum power_supply_property div2_cp_slave_props[] = {
 	POWER_SUPPLY_PROP_CP_ENABLE,
 	POWER_SUPPLY_PROP_INPUT_CURRENT_MAX,
 	POWER_SUPPLY_PROP_CURRENT_CAPABILITY,
-	POWER_SUPPLY_PROP_CP_TOGGLE_SWITCHER,
 };
 
 static int div2_cp_slave_get_prop(struct power_supply *psy,
@@ -2306,9 +2296,6 @@ static int div2_cp_slave_get_prop(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_CAPABILITY:
 		pval->intval = (int)chip->current_capability;
-		break;
-	case POWER_SUPPLY_PROP_CP_TOGGLE_SWITCHER:
-		pval->intval = 0;
 		break;
 	default:
 		dev_err(chip->dev, "read div2_cp_slave property %d is not supported\n",
@@ -2341,10 +2328,6 @@ static int div2_cp_slave_set_prop(struct power_supply *psy,
 		if (rc < 0)
 			return rc;
 		chip->current_capability = mode;
-		break;
-	case POWER_SUPPLY_PROP_CP_TOGGLE_SWITCHER:
-		/* use this case to toggle UVLO */
-		rc = smb1398_toggle_uvlo(chip);
 		break;
 	default:
 		dev_err(chip->dev, "write div2_cp_slave property %d is not supported\n",
