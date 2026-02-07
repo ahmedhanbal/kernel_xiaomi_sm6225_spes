@@ -185,6 +185,7 @@
 			<&gpi_dma0 1 0 1 64 0>;
 		dma-names = "tx", "rx";
 		status = "disabled";
+
 };
 
 	/* SPI Instance */

@@ -296,9 +296,9 @@ ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
 		khajeg-idp-usbc-overlay.dtbo \
 		khajeg-idp-pm8010-overlay.dtbo \
 		khajeg-idps-display-90hz-overlay.dtbo \
-		spes-khaje-idp-nopmi-overlay.dtbo \
-		spesn-khaje-idp-nopmi-overlay.dtbo \
-		spes-sm5602-khaje-idp-nopmi-overlay.dtbo
+        spes-khaje-idp-nopmi-overlay.dtbo \
+        spesn-khaje-idp-nopmi-overlay.dtbo \
+        spes-sm5602-khaje-idp-nopmi-overlay.dtbo
 
 khaje-atp-overlay.dtbo-base := khaje.dtb
 khaje-idp-overlay.dtbo-base := khaje.dtb
