@@ -306,10 +306,9 @@ static int __sc8551_read_byte(struct sc8551 *sc, u8 reg, u8 *data)
 	while (cnt--) {
 		ret = i2c_smbus_read_byte_data(sc->client, reg);
 		if (ret < 0) {
-			sc_err("i2c read fail: can't read from reg 0x%02X\n",
-			       reg);
+			sc_err("i2c read fail: can't read from reg 0x%02X\n", reg);
 		} else {
-			*data = (u8)ret;
+			*data = (u8) ret;
 			return 0;
 		}
 		udelay(200);
