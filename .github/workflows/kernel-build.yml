@@ -6,12 +6,13 @@ on:
       variant:
         description: "Variant to build"
         required: false
-        default: both
+        default: all
         type: choice
         options:
           - base
           - suNext
-          - both
+          - suNext-M
+          - all
 
 jobs:
   build:
@@ -42,7 +43,7 @@ jobs:
           sudo apt install -y \
             bc bison build-essential \
             curl flex git libssl-dev \
-            python3 rsync unzip cpio\
+            python3 rsync unzip cpio \
             gcc-aarch64-linux-gnu python-is-python3 \
             gcc-arm-linux-gnueabi zip
 
@@ -58,10 +59,9 @@ jobs:
 
       # --------------------------
       # Setup Google Clang r563880c
-      # ----------  ----------------
+      # --------------------------
       - name: Setup Google Clang r563880c
         run: |
-          # Extract only if cache miss
           if [ ! -d clang/bin ]; then
             mkdir -p clang
             curl -L \
@@ -69,11 +69,10 @@ jobs:
               | tar -xz -C clang
           fi
 
-          # Always add to PATH
           echo "$PWD/clang/bin" >> $GITHUB_PATH
 
       # --------------------------
-      # Build function
+      # Build kernel variants
       # --------------------------
       - name: Build kernel variants
         run: |
@@ -87,8 +86,8 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
           VARIANTS=()
-          if [[ "${{ github.event.inputs.variant }}" == "both" ]]; then
-            VARIANTS=(base suNext)
+          if [[ "${{ github.event.inputs.variant }}" == "all" ]]; then
+            VARIANTS=(base suNext suNext-M)
           else
             VARIANTS=(${{ github.event.inputs.variant }})
           fi
@@ -98,59 +97,62 @@ jobs:
             echo "Building variant: $VARIANT"
             echo "=============================="
 
-            # Reset repository to clean state (but preserve out/ for faster builds)
+            # Reset repo clean (preserve out/ for speed)
             git reset --hard HEAD
             git clean -fdx -e out/ -e clang/ -e 'anykernel-*/'
-            # Keep out/ directory for incremental builds (speeds up "both" builds)
             mkdir -p out
 
             # Clean KernelSU files
             rm -rf KernelSU-Next
             rm -f drivers/kernelsu
 
-            # Setup KernelSU-Next for suNext variant
-            if [ "$VARIANT" = "suNext" ]; then
-              echo "Setting up KernelSU-Next (legacy)..."
-              curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
-
-              # Verify the setup
-              if [ ! -f "drivers/kernelsu/Kconfig" ]; then
-                echo "Error: KernelSU Kconfig not found!"
-                ls -la drivers/ || true
-                ls -la KernelSU-Next/ || true
-                exit 1
-              fi
-
-              echo "KernelSU-Next setup complete"
+            # Setup KernelSU-Next for suNext + suNext-M
+            if [[ "$VARIANT" == "suNext" || "$VARIANT" == "suNext-M" ]]; then
+              echo "Setting up KernelSU-Next..."
+              curl -LSs \
+                "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" \
+                | bash -s legacy
             fi
 
-            # Only copy defconfig if .config doesn't exist (for incremental builds)
+            # Create initial config if missing
             if [ ! -f "out/.config" ]; then
               echo "Creating initial .config from defconfig"
               cp arch/arm64/configs/vendor/spes-stock_defconfig out/.config
-            else
-              echo "Reusing existing .config for incremental build"
             fi
 
-            # Variant-specific config changes and LOCALVERSION
+            # --------------------------
+            # Variant-specific config
+            # --------------------------
             if [ "$VARIANT" = "suNext" ]; then
+              echo "Enabling KernelSU (Kprobes hook)..."
               scripts/config --file out/.config -e CONFIG_KSU
+              scripts/config --file out/.config -d CONFIG_KSU_MANUAL_HOOK
+              scripts/config --file out/.config -e CONFIG_KSU_KPROBES_HOOK
               export LOCALVERSION=-suNext
+
+            elif [ "$VARIANT" = "suNext-M" ]; then
+              echo "Enabling KernelSU (Manual hooks)..."
+              scripts/config --file out/.config -e CONFIG_KSU
+              scripts/config --file out/.config -e CONFIG_KSU_MANUAL_HOOK
+              scripts/config --file out/.config -d CONFIG_KSU_KPROBES_HOOK
+              export LOCALVERSION=-suNext-M
+
             else
+              echo "Disabling KernelSU..."
               scripts/config --file out/.config -d CONFIG_KSU
               export LOCALVERSION=-base
             fi
 
-            # Refresh config (handles all prompts automatically)
+            # Refresh config
             make O=out olddefconfig
 
             # --------------------------
-            # Compile
+            # Compile kernel
             # --------------------------
-            make -j$(nproc) O=out Image.gz-dtb dtbo.img
+            make -j$(nproc) O=out LOCALVERSION=$LOCALVERSION Image.gz-dtb dtbo.img
 
             # --------------------------
-            # Prepare AnyKernel flashable zip (flat structure)
+            # Prepare AnyKernel folder
             # --------------------------
             ANYKERNEL_DIR="anykernel-$VARIANT"
             rm -rf "$ANYKERNEL_DIR"
@@ -159,34 +161,44 @@ jobs:
             cp out/arch/arm64/boot/Image.gz-dtb "$ANYKERNEL_DIR/"
             cp out/arch/arm64/boot/dtbo.img "$ANYKERNEL_DIR/"
 
-            # Patch kernel string in anykernel.sh
-            sed -i "s/^kernel.string=.*/kernel.string=4.19.325-hanbal-gforce-$VARIANT/" "$ANYKERNEL_DIR/anykernel.sh"
+            # Patch kernel string
+            sed -i "s/^kernel.string=.*/kernel.string=4.19.325-hanbal-gforce-$VARIANT/" \
+              "$ANYKERNEL_DIR/anykernel.sh"
 
-            # Clean up .git files from AnyKernel
-            rm -rf "$ANYKERNEL_DIR/.git" "$ANYKERNEL_DIR/.gitignore" "$ANYKERNEL_DIR/.gitattributes"
+            # Remove git metadata
+            rm -rf "$ANYKERNEL_DIR/.git" \
+                   "$ANYKERNEL_DIR/.gitignore" \
+                   "$ANYKERNEL_DIR/.gitattributes"
 
           done
 
       # --------------------------
-      # Generate timestamp for artifact names
+      # Generate timestamp
       # --------------------------
       - name: Generate timestamp
         id: timestamp
         run: echo "time=$(TZ='Asia/Karachi' date +'%d%m%y-%H%M%S')" >> $GITHUB_OUTPUT
 
       # --------------------------
-      # Upload flashable zips
+      # Upload artifacts
       # --------------------------
-      - name: Upload base zip
-        if: ${{ github.event.inputs.variant == 'base' || github.event.inputs.variant == 'both' }}
+      - name: Upload base artifact
+        if: ${{ github.event.inputs.variant == 'base' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
           name: Hanbal-gforce-base-${{ steps.timestamp.outputs.time }}
           path: anykernel-base/
 
-      - name: Upload suNext zip
-        if: ${{ github.event.inputs.variant == 'suNext' || github.event.inputs.variant == 'both' }}
+      - name: Upload suNext artifact
+        if: ${{ github.event.inputs.variant == 'suNext' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
           name: Hanbal-gforce-suNext-${{ steps.timestamp.outputs.time }}
           path: anykernel-suNext/
+
+      - name: Upload suNext-M artifact
+        if: ${{ github.event.inputs.variant == 'suNext-M' || github.event.inputs.variant == 'all' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hanbal-gforce-suNext-M-${{ steps.timestamp.outputs.time }}
+          path: anykernel-suNext-M/
