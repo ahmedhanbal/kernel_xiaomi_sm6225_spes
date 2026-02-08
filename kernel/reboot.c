@@ -305,7 +305,7 @@ DEFINE_MUTEX(system_transition_mutex);
  *
  * reboot doesn't sync: do that yourself before calling this.
  */
-#if defined(CONFIG_KSU) && defined(CONFIG_KSU_MANUAL_HOOK) && !defined(CONFIG_KPROBES)
+#if defined(CONFIG_KSU) && defined(CONFIG_KSU_MANUAL_HOOK)
 extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);
 #endif
 SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
@@ -314,7 +314,7 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 	struct pid_namespace *pid_ns = task_active_pid_ns(current);
 	char buffer[256];
 	int ret = 0;
-#if defined(CONFIG_KSU) && defined(CONFIG_KSU_MANUAL_HOOK) && !defined(CONFIG_KPROBES)
+#if defined(CONFIG_KSU) && defined(CONFIG_KSU_MANUAL_HOOK)
 	ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);
 #endif
 	/* We only trust the superuser with rebooting the system. */
