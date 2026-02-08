@@ -24,7 +24,7 @@ CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 # --------------------------
 # Variants to build
 # --------------------------
-VARIANTS=("base" "suNext")
+VARIANTS=("base" "suNext" "suNext-M")
 
 # --------------------------
 # Clone AnyKernel once
@@ -52,6 +52,8 @@ for VARIANT in "${VARIANTS[@]}"; do
   # --------------------------
   # Variant-specific config + LOCALVERSION
   # --------------------------
+  LOCALV="-$VARIANT"
+
   if [ "$VARIANT" == "suNext" ]; then
     echo "Enabling KernelSU..."
     ./scripts/config --file "$OUTDIR/.config" -e CONFIG_KSU
@@ -59,11 +61,16 @@ for VARIANT in "${VARIANTS[@]}"; do
     ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_ALLOWLIST_WORKAROUND
     ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_DEBUG
     ./scripts/config --file "$OUTDIR/.config" -e CONFIG_KSU_KPROBES_HOOK
-    LOCALV="-suNext"
+  elif [ "$VARIANT" == "suNext-M" ]; then
+    echo "Enabling KernelSU with Manual Hooks"
+    ./scripts/config --file "$OUTDIR/.config" -e CONFIG_KSU
+    ./scripts/config --file "$OUTDIR/.config" -e CONFIG_KSU_MANUAL_HOOK
+    ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_ALLOWLIST_WORKAROUND
+    ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_DEBUG
+    ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_KPROBES_HOOK
   else
     echo "Disabling KernelSU..."
     ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU
-    LOCALV="-base"
   fi
   # --------------------------
   # Compile Kernel
