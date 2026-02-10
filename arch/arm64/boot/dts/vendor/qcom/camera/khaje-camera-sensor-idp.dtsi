@@ -256,6 +256,46 @@
 		status = "ok";
 	};
 
+	led_flash_rear_aux: qcom,camera-flash@1 {
+		cell-index = <1>;
+		compatible = "qcom,camera-flash";
+		flash-type = <CAM_FLASH_TYPE_GPIO>;
+		cam_vio-supply = <&L7P>;
+		regulator-names = "cam_vio";
+		rgltr-cntrl-support;
+		rgltr-min-voltage = <1800000>;
+		rgltr-max-voltage = <1800000>;
+		rgltr-load-current = <120000>;
+		gpio-no-mux = <0>;
+		gpio-custom1 = <0>;
+		gpio-req-tbl-num = <0>;
+		gpio-req-tbl-flags = <0>;
+		gpio-req-tbl-label = "CUSTOM_GPIO1";
+		qcom,flash-gpios = <&pm6125_gpios 2 0>,
+		                          <&tlmm 85 0>;
+		status = "ok";
+	};
+
+	led_flash_rear_aux2: qcom,camera-flash@2 {
+		cell-index = <2>;
+		compatible = "qcom,camera-flash";
+		flash-type = <CAM_FLASH_TYPE_GPIO>;
+		cam_vio-supply = <&L7P>;
+		regulator-names = "cam_vio";
+		rgltr-cntrl-support;
+		rgltr-min-voltage = <1800000>;
+		rgltr-max-voltage = <1800000>;
+		rgltr-load-current = <120000>;
+		gpio-no-mux = <0>;
+		gpio-custom1 = <0>;
+		gpio-req-tbl-num = <0>;
+		gpio-req-tbl-flags = <0>;
+		gpio-req-tbl-label = "CUSTOM_GPIO1";
+		qcom,flash-gpios = <&pm6125_gpios 2 0>,
+		                          <&tlmm 85 0>;
+		status = "ok";
+	};
+
 	 /* Rear*/
 	qcom,cam-sensor0 {
 		cell-index = <0>;
