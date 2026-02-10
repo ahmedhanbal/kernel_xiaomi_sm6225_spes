@@ -76,7 +76,7 @@
 
 &pm7250b_gpios {
 	disp_lcd_bias_en {
-		disp_lcd_bias_en_default: disp_lcd_bias_en_default {
+		pm7250b_disp_lcd_bias_en_default: disp_lcd_bias_en_default {
 			pins = "gpio5";
 			function = "func1";
 			input-disable;
