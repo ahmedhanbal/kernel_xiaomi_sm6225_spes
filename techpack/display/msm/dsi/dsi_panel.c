@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -9,9 +8,11 @@
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
 #include <linux/pwm.h>
+#include <linux/ctype.h>
 #include <video/mipi_display.h>
 
 #include "dsi_panel.h"
+#include "dsi_display.h"
 #include "dsi_ctrl_hw.h"
 #include "dsi_parser.h"
 #include "sde_dbg.h"
@@ -56,7 +57,7 @@ static u32 dsi_dsc_rc_buf_thresh[] = {0x0e, 0x1c, 0x2a, 0x38, 0x46, 0x54,
  * Rate control - Min QP values for each ratio type in dsi_dsc_ratio_type
  */
 static char dsi_dsc_rc_range_min_qp_1_1[][15] = {
-	{0, 0, 1, 1, 3, 3, 3, 3, 3, 3, 5, 5, 5, 7, 13},
+	{0, 0, 1, 1, 3, 3, 3, 3, 3, 3, 5, 5, 5, 7, 12},
 	{0, 4, 5, 5, 7, 7, 7, 7, 7, 7, 9, 9, 9, 11, 17},
 	{0, 4, 9, 9, 11, 11, 11, 11, 11, 11, 13, 13, 13, 15, 21},
 	{0, 4, 5, 6, 7, 7, 7, 7, 7, 7, 9, 9, 9, 11, 15},
@@ -749,49 +750,7 @@ error:
 	return rc;
 }
 
-int dsi_panel_update_doze(struct dsi_panel *panel) {
-	int rc = 0;
 
-	if (panel->doze_enabled && panel->doze_mode == DSI_DOZE_HBM) {
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_HBM);
-		if (rc)
-			DSI_ERR("[%s] failed to send DSI_CMD_SET_DOZE_HBM cmd, rc=%d\n",
-					panel->name, rc);
-	} else if (panel->doze_enabled && panel->doze_mode == DSI_DOZE_LPM) {
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_LBM);
-		if (rc)
-			DSI_ERR("[%s] failed to send DSI_CMD_SET_DOZE_LBM cmd, rc=%d\n",
-					panel->name, rc);
-	} else if (!panel->doze_enabled) {
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_NOLP);
-		if (rc)
-			DSI_ERR("[%s] failed to send DSI_CMD_SET_NOLP cmd, rc=%d\n",
-					panel->name, rc);
-	}
-
-	return rc;
-}
-
-int dsi_panel_set_doze_status(struct dsi_panel *panel, bool status) {
-	if (panel->doze_enabled == status)
-		return 0;
-
-	panel->doze_enabled = status;
-
-	return dsi_panel_update_doze(panel);
-}
-
-int dsi_panel_set_doze_mode(struct dsi_panel *panel, enum dsi_doze_mode_type mode) {
-	if (panel->doze_mode == mode)
-		return 0;
-
-	panel->doze_mode = mode;
-
-	if (!panel->doze_enabled)
-		return 0;
-
-	return dsi_panel_update_doze(panel);
-}
 
 int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 {
@@ -3570,8 +3529,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	if (rc)
 		DSI_DEBUG("failed to parse esd config, rc=%d\n", rc);
 
-	panel->doze_mode = DSI_DOZE_LPM;
-	panel->doze_enabled = false;
+
 
 	panel->power_mode = SDE_MODE_DPMS_OFF;
 	drm_panel_init(&panel->drm_panel);
@@ -4211,6 +4169,7 @@ error:
 int dsi_panel_set_lp1(struct dsi_panel *panel)
 {
 	int rc = 0;
+	int doze_brightness;
 
 	if (!panel) {
 		DSI_ERR("invalid params\n");
@@ -4232,14 +4191,34 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 		panel->power_mode != SDE_MODE_DPMS_LP2)
 		dsi_pwr_panel_regulator_mode_set(&panel->power_info,
 			"ibb", REGULATOR_MODE_IDLE);
-	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP1);
-	if (rc)
-		DSI_ERR("[%s] failed to send DSI_CMD_SET_LP1 cmd, rc=%d\n",
-		       panel->name, rc);
+	/*
+	 * For this panel, LP1 mode IS the doze mode.
+	 * Send the appropriate doze brightness command based on doze_brightness.
+	 * doze_brightness: 1 = HBM (high brightness), 2 = LBM (low brightness)
+	 */
+	doze_brightness = panel->doze_brightness;
+	DSI_INFO("LP1: panel->doze_brightness = %d\n", doze_brightness);
 
-	rc = dsi_panel_set_doze_status(panel, true);
-	if (rc)
-		DSI_ERR("unable to set doze on\n");
+	if (doze_brightness == 1) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_HBM);
+		if (rc)
+			DSI_ERR("[%s] failed to set doze HBM, rc=%d\n", panel->name, rc);
+		else
+			DSI_INFO("[%s] sent DOZE_HBM command successfully\n", panel->name);
+	} else if (doze_brightness == 2) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_LBM);
+		if (rc)
+			DSI_ERR("[%s] failed to set doze LBM, rc=%d\n", panel->name, rc);
+		else
+			DSI_INFO("[%s] sent DOZE_LBM command successfully\n", panel->name);
+	} else {
+		/* No doze brightness set, send LP1 if available */
+		DSI_INFO("[%s] doze_brightness=0, sending LP1 command\n", panel->name);
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP1);
+		if (rc)
+			DSI_ERR("[%s] failed to send LP1 cmd, rc=%d\n", panel->name, rc);
+	}
+
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -4248,6 +4227,7 @@ exit:
 int dsi_panel_set_lp2(struct dsi_panel *panel)
 {
 	int rc = 0;
+	int doze_brightness;
 
 	if (!panel) {
 		DSI_ERR("invalid params\n");
@@ -4258,14 +4238,32 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 	if (!panel->panel_initialized)
 		goto exit;
 
-	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP2);
-	if (rc)
-		DSI_ERR("[%s] failed to send DSI_CMD_SET_LP2 cmd, rc=%d\n",
-		       panel->name, rc);
+	/*
+	 * For this panel, LP2 mode IS the doze mode.
+	 * Send the appropriate doze brightness command based on doze_brightness.
+	 */
+	doze_brightness = panel->doze_brightness;
+	DSI_INFO("LP2: panel->doze_brightness = %d\n", doze_brightness);
 
-	rc = dsi_panel_set_doze_status(panel, true);
-	if (rc)
-		DSI_ERR("unable to set doze on\n");
+	if (doze_brightness == 1) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_HBM);
+		if (rc)
+			DSI_ERR("[%s] failed to set doze HBM, rc=%d\n", panel->name, rc);
+		else
+			DSI_INFO("[%s] sent DOZE_HBM command successfully\n", panel->name);
+	} else if (doze_brightness == 2) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_LBM);
+		if (rc)
+			DSI_ERR("[%s] failed to set doze LBM, rc=%d\n", panel->name, rc);
+		else
+			DSI_INFO("[%s] sent DOZE_LBM command successfully\n", panel->name);
+	} else {
+		DSI_INFO("[%s] doze_brightness=0, sending LP2 command\n", panel->name);
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP2);
+		if (rc)
+			DSI_ERR("[%s] failed to send LP2 cmd, rc=%d\n", panel->name, rc);
+	}
+
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -4292,14 +4290,16 @@ int dsi_panel_set_nolp(struct dsi_panel *panel)
 	     panel->power_mode == SDE_MODE_DPMS_LP2))
 		dsi_pwr_panel_regulator_mode_set(&panel->power_info,
 			"ibb", REGULATOR_MODE_NORMAL);
+	/* Reset AOD state when exiting low power mode */
+	panel->in_aod = 0;
+
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_NOLP);
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_NOLP cmd, rc=%d\n",
 		       panel->name, rc);
+	else
+		DSI_INFO("[%s] exiting low power mode\n", panel->name);
 
-	rc = dsi_panel_set_doze_status(panel, false);
-	if (rc)
-		DSI_ERR("unable to set doze off\n");
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -4735,7 +4735,7 @@ int dsi_panel_disable(struct dsi_panel *panel)
 	}
 	panel->panel_initialized = false;
 	panel->power_mode = SDE_MODE_DPMS_OFF;
-	panel->doze_enabled = false;
+	panel->in_aod = 0;
 
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -4909,3 +4909,239 @@ static void __exit dsi_panel_dc_dim_exit(void)
 
 module_init(dsi_panel_dc_dim_init);
 module_exit(dsi_panel_dc_dim_exit);
+
+#ifdef CONFIG_TARGET_PROJECT_K7T
+int dsi_panel_set_doze_backlight(struct dsi_display *display)
+{
+	struct dsi_panel *panel;
+	struct drm_device *drm_dev;
+	int rc = 0;
+	int doze_brightness;
+
+	if (!display || !display->panel || !display->drm_dev)
+		return -EINVAL;
+
+	panel = display->panel;
+	drm_dev = display->drm_dev;
+
+	mutex_lock(&panel->panel_lock);
+	if (panel->panel_initialized) {
+		doze_brightness = drm_dev->doze_brightness;
+		/* Also store in panel for LP1/LP2 functions to use */
+		panel->doze_brightness = doze_brightness;
+
+		DSI_INFO("[msm-dsi-info]: doze_state = %d, doze_brightness = %d\n",
+				drm_dev->doze_state, doze_brightness);
+
+		if (doze_brightness == 2) {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_LBM);
+			if (rc)
+				DSI_ERR("[%s] failed to set doze LBM, rc=%d\n", panel->name, rc);
+			else
+				DSI_INFO("DsiPanelSetDoz %d\n", doze_brightness);
+			panel->in_aod = 1;
+		} else if (doze_brightness == 1) {
+			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_HBM);
+			if (rc)
+				DSI_ERR("[%s] failed to set doze HBM, rc=%d\n", panel->name, rc);
+			else
+				DSI_INFO("DsiPanelSetDoz %d\n", doze_brightness);
+			panel->in_aod = 1;
+		} else {
+             /*
+              * In the RE code:
+              * drm_dev->doze_brightness = 0;
+              * printk(..., 0);
+              */
+			drm_dev->doze_brightness = 0;
+			panel->doze_brightness = 0;
+			panel->in_aod = 0;
+			DSI_INFO("DsiPanelSetDoz %d\n", 0);
+		}
+	} else {
+		DSI_ERR("[%s] set doze backlight before panel initialized!\n", display->name);
+	}
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
+int dsi_panel_get_doze_backlight(struct dsi_display *display, char *buf)
+{
+	struct dsi_panel *panel;
+	struct drm_device *drm_dev;
+	int ret;
+
+	if (!display || !display->panel || !display->drm_dev)
+		return -EINVAL;
+
+	panel = display->panel;
+	drm_dev = display->drm_dev;
+
+	mutex_lock(&panel->panel_lock);
+	ret = snprintf(buf, PAGE_SIZE, "%d\n", drm_dev->doze_brightness);
+	DSI_INFO("DsiPanelGetDoz %d\n", drm_dev->doze_brightness);
+	mutex_unlock(&panel->panel_lock);
+	return ret;
+}
+
+int dsi_panel_disp_param_send(struct dsi_display *display, int cmd)
+{
+	int rc = 0;
+	struct dsi_panel *panel;
+	bool handled = false;
+
+	if (!display || !display->panel)
+		return -EINVAL;
+
+	panel = display->panel;
+
+	/*
+	 * Xiaomi displayfeature HAL sends bitmask-encoded command codes
+	 * via the disp_param sysfs node. Multiple nibble positions encode
+	 * different parameter groups independently:
+	 *
+	 * Bits 16-19 (cmd & 0x0F0000): HBM control
+	 *   0x020000 = HBM ON,  0x010000 = HBM OFF
+	 *   0x0C0000 = sunlight HBM ON,  0x0A0000 = sunlight HBM OFF
+	 *
+	 * Bits 8-11 (cmd & 0xF00): Gamma/color control
+	 *   0x400 = gamma for HBM,  0x100 = gamma restore
+	 *   (no DTS command sets defined for these yet)
+	 */
+
+	/* HBM control nibble: bits 16-19 */
+	switch (cmd & 0x0F0000) {
+	case 0x020000: /* HBM ON */
+		DSI_INFO("disp_param: HBM ON (cmd=0x%x)\n", cmd);
+		mutex_lock(&panel->panel_lock);
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_HBM_ON);
+		mutex_unlock(&panel->panel_lock);
+		handled = true;
+		break;
+	case 0x010000: /* HBM OFF */
+		DSI_INFO("disp_param: HBM OFF (cmd=0x%x)\n", cmd);
+		mutex_lock(&panel->panel_lock);
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_HBM_OFF);
+		mutex_unlock(&panel->panel_lock);
+		handled = true;
+		break;
+	case 0x0C0000: /* Sunlight / auto HBM ON */
+		DSI_INFO("disp_param: sunlight HBM ON (cmd=0x%x)\n", cmd);
+		mutex_lock(&panel->panel_lock);
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_HBM_ON);
+		mutex_unlock(&panel->panel_lock);
+		handled = true;
+		break;
+	case 0x0A0000: /* Sunlight / auto HBM OFF */
+		DSI_INFO("disp_param: sunlight HBM OFF (cmd=0x%x)\n", cmd);
+		mutex_lock(&panel->panel_lock);
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_HBM_OFF);
+		mutex_unlock(&panel->panel_lock);
+		handled = true;
+		break;
+	default:
+		break;
+	}
+
+	/* Gamma/color control nibble: bits 8-11 */
+	switch (cmd & 0xF00) {
+	case 0x400: /* Gamma adjust for HBM */
+	case 0x100: /* Gamma restore */
+		DSI_INFO("disp_param: gamma cmd=0x%x (no-op, no DTS cmds)\n",
+			 cmd);
+		handled = true;
+		break;
+	default:
+		break;
+	}
+
+	/* If no bitmask matched, allow small direct enum values
+	 * (within valid cmd_sets[] bounds) to pass through */
+	if (!handled) {
+		if (cmd >= 0 && cmd < DSI_CMD_SET_MAX) {
+			mutex_lock(&panel->panel_lock);
+			rc = dsi_panel_tx_cmd_set(panel, cmd);
+			mutex_unlock(&panel->panel_lock);
+		} else {
+			DSI_INFO("disp_param: ignoring unhandled cmd=0x%x\n",
+				  cmd);
+		}
+	}
+
+	if (rc)
+		DSI_ERR("disp_param: cmd=0x%x failed, rc=%d\n", cmd, rc);
+
+	return rc;
+}
+
+ssize_t dsi_panel_disp_param_get(struct dsi_display *display, char *buf)
+{
+    // Stub implementation based on missing RE details
+    return 0;
+}
+#endif
+
+#ifdef CONFIG_TARGET_PROJECT_K7T
+ssize_t dsi_panel_mipi_reg_write(struct dsi_panel *panel, char *buf, size_t count)
+{
+	char *payload;
+	struct mipi_dsi_msg msg = {0};
+	int rc = 0;
+	u32 value;
+	char *pos = buf;
+	int len = 0;
+
+	if (!panel || !panel->host || !panel->host->ops)
+		return -EINVAL;
+
+	/* Estimate max possible bytes */
+	payload = kzalloc(count, GFP_KERNEL);
+	if (!payload)
+		return -ENOMEM;
+
+	while (pos < buf + count) {
+		/* skip whitespace */
+		while (pos < buf + count && (*pos == ' ' || *pos == '\n' || *pos == '\t'))
+			pos++;
+
+		if (pos >= buf + count || *pos == 0)
+			break;
+
+		if (sscanf(pos, "%x", &value) != 1)
+			break;
+
+		payload[len++] = (char)value;
+
+		/* skip current hex number */
+		while (pos < buf + count && (isalnum(*pos)))
+			pos++;
+	}
+
+	if (len < 1) {
+		kfree(payload);
+		return -EINVAL;
+	}
+
+	/* First byte is DSI data type */
+	msg.type = payload[0];
+	msg.channel = panel->mipi_device.channel;
+	msg.tx_buf = payload + 1;
+	msg.tx_len = len - 1;
+	msg.flags = MIPI_DSI_MSG_USE_LPM;
+
+	rc = panel->host->ops->transfer(panel->host, &msg);
+
+	kfree(payload);
+
+	if (rc < 0)
+		return rc;
+
+	return count;
+}
+
+ssize_t dsi_panel_mipi_reg_read(struct dsi_panel *panel, char *buf)
+{
+	/* Stub for read, as we don't know what register to read without input */
+	return 0;
+}
+#endif
