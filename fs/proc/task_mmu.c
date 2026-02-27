@@ -24,6 +24,9 @@
 #if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) || defined(CONFIG_KSU_SUSFS_SUS_MAP)
 #include <linux/susfs_def.h>
 #endif
+#ifdef CONFIG_NOMOUNT
+#include <linux/nomount.h>
+#endif
 
 #include <asm/elf.h>
 #include <asm/tlb.h>
@@ -397,6 +400,11 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 		ino = inode->i_ino;
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 bypass_orig_flow:
+#endif
+#ifdef CONFIG_NOMOUNT
+		if (!nomount_should_skip()) {
+			nomount_spoof_mmap_metadata(inode, &dev, &ino);
+		}
 #endif
 		pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
 	}

@@ -8,6 +8,10 @@
 #include <linux/prefetch.h>
 #include "mount.h"
 
+#ifdef CONFIG_NOMOUNT
+#include <linux/nomount.h>
+#endif
+
 static int prepend(char **buffer, int *buflen, const char *str, int namelen)
 {
 	*buflen -= namelen;
@@ -259,6 +263,30 @@ char *d_path(const struct path *path, char *buf, int buflen)
 	char *res = buf + buflen;
 	struct path root;
 	int error;
+
+#ifdef CONFIG_NOMOUNT
+	const char *v_path;
+	int len;
+
+    if (path->dentry && path->dentry->d_inode &&
+		test_bit(path->dentry->d_inode->i_ino & (NOMOUNT_BLOOM_SIZE - 1), nomount_bloom)) {
+		nm_enter();
+        v_path = nomount_get_static_vpath(path->dentry->d_inode);
+
+        if (v_path) {
+            len = strlen(v_path);
+            if (buflen >= len + 1) {
+                res = buf + buflen - 1;
+                *res = '\0';
+                res -= len;
+                memcpy(res, v_path, len);
+				nm_exit();
+                return res;
+            }
+        }
+		nm_exit();
+    }
+#endif
 
 	/*
 	 * We have various synthetic filesystems that never get mounted.  On

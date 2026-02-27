@@ -98,6 +98,9 @@
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 #include <linux/susfs_def.h>
 #endif
+#ifdef CONFIG_NOMOUNT
+#include <linux/nomount.h>
+#endif
 #include <trace/events/oom.h>
 #include "internal.h"
 #include "fd.h"
@@ -1961,6 +1964,14 @@ static int do_proc_readlink(struct path *path, char __user *buffer, int buflen)
 	char *tmp = (char *)__get_free_page(GFP_KERNEL);
 	char *pathname;
 	int len;
+
+#ifdef CONFIG_NOMOUNT
+    if (!nomount_should_skip() && path->dentry) {
+        ssize_t nm_ret = nomount_readlink_hook(d_backing_inode(path->dentry), buffer, buflen);
+        if (nm_ret > 0)
+            return nm_ret;
+    }
+#endif
 
 	if (!tmp)
 		return -ENOMEM;

@@ -21,6 +21,10 @@
 #include <linux/susfs_def.h>
 #endif
 
+#ifdef CONFIG_NOMOUNT
+#include <linux/nomount.h>
+#endif
+
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
 
@@ -88,15 +92,27 @@ int vfs_getattr_nosec(const struct path *path, struct kstat *stat,
 		      u32 request_mask, unsigned int query_flags)
 {
 	struct inode *inode = d_backing_inode(path->dentry);
+	int ret = 0;
 
 	memset(stat, 0, sizeof(*stat));
 	stat->result_mask |= STATX_BASIC_STATS;
 	request_mask &= STATX_ALL;
 	query_flags &= KSTAT_QUERY_FLAGS;
-	if (inode->i_op->getattr)
-		return inode->i_op->getattr(path, stat, request_mask,
+	if (inode->i_op->getattr) {
+		ret = inode->i_op->getattr(path, stat, request_mask,
 					    query_flags);
 
+#ifdef CONFIG_NOMOUNT
+        if (ret == 0 && !nomount_should_skip())
+            nomount_spoof_stat(path, stat);
+#endif
+        return ret;
+	}
+
+#ifdef CONFIG_NOMOUNT
+    if (!nomount_should_skip())
+    	nomount_spoof_stat(path, stat);
+#endif
 	generic_fillattr(inode, stat);
 	return 0;
 }

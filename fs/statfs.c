@@ -9,6 +9,9 @@
 #include <linux/security.h>
 #include <linux/uaccess.h>
 #include <linux/compat.h>
+#ifdef CONFIG_NOMOUNT
+#include <linux/nomount.h>
+#endif
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 #include <linux/susfs_def.h>
 #include "mount.h"
@@ -89,6 +92,10 @@ int vfs_statfs(const struct path *path, struct kstatfs *buf)
 	error = statfs_by_dentry(path->dentry, buf);
 	if (!error)
 		buf->f_flags = calculate_f_flags(path->mnt);
+#ifdef CONFIG_NOMOUNT
+	if (!nomount_should_skip())
+		nomount_spoof_statfs(path, buf);
+#endif
 	return error;
 #endif
 }
