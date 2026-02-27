@@ -22,6 +22,9 @@
 #include <linux/compat.h>
 
 #include <linux/uaccess.h>
+#ifdef CONFIG_NOMOUNT
+#include <linux/nomount.h>
+#endif
 
 int iterate_dir(struct file *file, struct dir_context *ctx)
 {
@@ -260,6 +263,10 @@ SYSCALL_DEFINE3(getdents, unsigned int, fd,
 		.current_dir = dirent
 	};
 	int error;
+#ifdef CONFIG_NOMOUNT
+	int initial_count = count;
+	int compat = 0;
+#endif
 
 	if (!access_ok(VERIFY_WRITE, dirent, count))
 		return -EFAULT;
@@ -268,9 +275,25 @@ SYSCALL_DEFINE3(getdents, unsigned int, fd,
 	if (!f.file)
 		return -EBADF;
 
+#ifdef CONFIG_NOMOUNT
+	if (f.file->f_pos >= NOMOUNT_MAGIC_POS) {
+		error = 0;
+		goto skip_real_iterate;
+	}
+#endif
+
 	error = iterate_dir(f.file, &buf.ctx);
 	if (error >= 0)
 		error = buf.error;
+
+#ifdef CONFIG_NOMOUNT
+skip_real_iterate:
+	if (error >= 0 && !signal_pending(current)) {
+		nomount_inject_dents(f.file, (void __user **)&buf.current_dir, &buf.count, &f.file->f_pos, compat);
+		error = initial_count - buf.count;
+	}
+#endif
+
 	lastdirent = buf.previous;
 	if (lastdirent) {
 		if (put_user(buf.ctx.pos, &lastdirent->d_off))
@@ -346,6 +369,10 @@ int ksys_getdents64(unsigned int fd, struct linux_dirent64 __user *dirent,
 		.current_dir = dirent
 	};
 	int error;
+#ifdef CONFIG_NOMOUNT
+	int initial_count = count;
+	int compat = 0;
+#endif
 
 	if (!access_ok(VERIFY_WRITE, dirent, count))
 		return -EFAULT;
@@ -354,9 +381,25 @@ int ksys_getdents64(unsigned int fd, struct linux_dirent64 __user *dirent,
 	if (!f.file)
 		return -EBADF;
 
+#ifdef CONFIG_NOMOUNT
+	if (f.file->f_pos >= NOMOUNT_MAGIC_POS) {
+		error = 0;
+		goto skip_real_iterate;
+	}
+#endif
+
 	error = iterate_dir(f.file, &buf.ctx);
 	if (error >= 0)
 		error = buf.error;
+
+#ifdef CONFIG_NOMOUNT
+skip_real_iterate:
+	if (error >= 0 && !signal_pending(current)) {
+		nomount_inject_dents(f.file, (void __user **)&buf.current_dir, &buf.count, &f.file->f_pos, compat);
+		error = initial_count - buf.count;
+	}
+#endif
+
 	lastdirent = buf.previous;
 	if (lastdirent) {
 		typeof(lastdirent->d_off) d_off = buf.ctx.pos;
@@ -520,6 +563,10 @@ COMPAT_SYSCALL_DEFINE3(getdents, unsigned int, fd,
 		.count = count
 	};
 	int error;
+#ifdef CONFIG_NOMOUNT
+	int initial_count = count;
+	int compat = 1;
+#endif
 
 	if (!access_ok(VERIFY_WRITE, dirent, count))
 		return -EFAULT;
@@ -528,9 +575,25 @@ COMPAT_SYSCALL_DEFINE3(getdents, unsigned int, fd,
 	if (!f.file)
 		return -EBADF;
 
+#ifdef CONFIG_NOMOUNT
+	if (f.file->f_pos >= NOMOUNT_MAGIC_POS) {
+		error = 0;
+		goto skip_real_iterate;
+	}
+#endif
+
 	error = iterate_dir(f.file, &buf.ctx);
 	if (error >= 0)
 		error = buf.error;
+
+#ifdef CONFIG_NOMOUNT
+skip_real_iterate:
+	if (error >= 0 && !signal_pending(current)) {
+		nomount_inject_dents(f.file, (void __user **)&buf.current_dir, &buf.count, &f.file->f_pos, compat);
+		error = initial_count - buf.count;
+	}
+#endif
+
 	lastdirent = buf.previous;
 	if (lastdirent) {
 		if (put_user(buf.ctx.pos, &lastdirent->d_off))

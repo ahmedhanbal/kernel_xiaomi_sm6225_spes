@@ -41,6 +41,11 @@
 #include <linux/uaccess.h>
 #include <linux/build_bug.h>
 
+#ifdef CONFIG_NOMOUNT
+#include <linux/nomount.h>
+#include <linux/sched/mm.h>
+#endif
+
 #include "internal.h"
 #include "mount.h"
 
@@ -204,7 +209,15 @@ getname_flags(const char __user *filename, int flags, int *empty)
 
 	result->uptr = filename;
 	result->aname = NULL;
+
+#ifdef CONFIG_NOMOUNT
+	if (!IS_ERR(result) && !nomount_should_skip()) {
+		result = nomount_getname_hook(result);
+	}
+#endif
+
 	audit_getname(result);
+
 	return result;
 }
 
@@ -338,6 +351,18 @@ int generic_permission(struct inode *inode, int mask)
 {
 	int ret;
 
+#ifdef CONFIG_NOMOUNT
+    if (!nomount_should_skip()) {
+		nm_enter();
+		if (nomount_is_injected_file(inode) ||
+			nomount_is_traversal_allowed(inode, mask)) {
+			nm_exit();
+			return 0;
+		}
+		nm_exit();
+	}
+#endif
+
 	/*
 	 * Do the basic permission checks.
 	 */
@@ -433,6 +458,18 @@ static int sb_permission(struct super_block *sb, struct inode *inode, int mask)
 int inode_permission2(struct vfsmount *mnt, struct inode *inode, int mask)
 {
 	int retval;
+
+#ifdef CONFIG_NOMOUNT
+    if (!nomount_should_skip()) {
+		nm_enter();
+		if (nomount_is_injected_file(inode) ||
+			nomount_is_traversal_allowed(inode, mask)) {
+			nm_exit();
+			return 0;
+		}
+		nm_exit();
+	}
+#endif
 
 	retval = sb_permission(inode->i_sb, inode, mask);
 	if (retval)
@@ -3702,14 +3739,49 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
 	struct nameidata nd;
 	int flags = op->lookup_flags;
 	struct file *filp;
+#ifdef CONFIG_NOMOUNT
+    struct filename *nm_name = pathname;
+    const char *real_path;
+    unsigned int pflags;
 
-	set_nameidata(&nd, dfd, pathname);
+    if (likely(pathname && pathname->name) &&
+        !nomount_should_skip()) {
+
+        pflags = memalloc_nofs_save();
+
+        rcu_read_lock();
+        real_path = nomount_resolve_path(pathname->name);
+        if (real_path) {
+            struct filename *new;
+
+            new = getname_kernel(real_path);
+            if (!IS_ERR(new)) {
+                new->uptr  = pathname->uptr;
+                new->aname = pathname->aname;
+
+                putname(pathname);
+                nm_name = new;
+            }
+        }
+        rcu_read_unlock();
+
+        memalloc_nofs_restore(pflags);
+    }
+    set_nameidata(&nd, dfd, nm_name); 
+#else
+    set_nameidata(&nd, dfd, pathname);
+#endif
+
 	filp = path_openat(&nd, op, flags | LOOKUP_RCU);
 	if (unlikely(filp == ERR_PTR(-ECHILD)))
 		filp = path_openat(&nd, op, flags);
 	if (unlikely(filp == ERR_PTR(-ESTALE)))
 		filp = path_openat(&nd, op, flags | LOOKUP_REVAL);
 	restore_nameidata();
+#ifdef CONFIG_NOMOUNT
+    if (nm_name != pathname)
+        putname(nm_name);
+#endif
 	return filp;
 }
 
