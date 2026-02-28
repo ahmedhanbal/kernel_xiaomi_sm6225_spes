@@ -1,4 +1,4 @@
-name: Build hanbal-gforce Kernel
+name: Build Kernel
 
 on:
   workflow_dispatch:
@@ -20,12 +20,13 @@ jobs:
 
     steps:
       # --------------------------
-      # Checkout current branch (shallow)
+      # Checkout kernel (shallow)
       # --------------------------
       - name: Checkout kernel
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+          fetch-depth: 1
 
       # --------------------------
       # Install dependencies
@@ -50,7 +51,7 @@ jobs:
           key: clang-r563880c
 
       # --------------------------
-      # Setup Google Clang r563880c
+      # Setup Clang
       # --------------------------
       - name: Setup Clang
         run: |
@@ -93,14 +94,13 @@ jobs:
             echo "Building variant: $VARIANT"
             echo "=================================="
 
-            # Clean tracked files only (preserve out/, clang/, anykernel-*)
+            # Reset tracked files (preserve out/, clang/, anykernel-*)
             git reset --hard HEAD
             git clean -fdx -e out/ -e clang/ -e 'anykernel-*/'
-
             mkdir -p out
 
             # --------------------------
-            # Branch Mapping
+            # Branch mapping
             # --------------------------
             if [ "$VARIANT" = "base" ]; then
               BRANCH="16.0-perf-ksun"
@@ -111,13 +111,26 @@ jobs:
             fi
 
             echo "Fetching branch: $BRANCH"
-            git fetch origin "$BRANCH"
+            git fetch --depth=1 origin "$BRANCH"
+            git checkout --force FETCH_HEAD
 
-            echo "Checking out: $BRANCH"
-            git checkout -B "$BRANCH" "origin/$BRANCH"
+            # --------------------------
+            # Clone KernelSU-Next (only for suNext/susNext)
+            # --------------------------
+            if [ "$VARIANT" = "suNext" ] || [ "$VARIANT" = "susNext" ]; then
+              echo "Cloning KernelSU-Next..."
+              rm -rf KernelSU-Next
+              git clone https://github.com/ahmedhanbal/KernelSU-Next.git
 
-            echo "Updating submodules..."
-            git submodule update --init --recursive
+              cd KernelSU-Next
+              if [ "$VARIANT" = "suNext" ]; then
+                  git checkout --force legacy
+              else
+                  git checkout --force legacy_susfs
+              fi
+              cd ..
+
+            fi
 
             # --------------------------
             # Defconfig
@@ -155,7 +168,6 @@ jobs:
             # AnyKernel Packaging
             # --------------------------
             ANYKERNEL_DIR="anykernel-$VARIANT"
-
             if [ ! -d "$ANYKERNEL_DIR" ]; then
               git clone --depth=1 https://github.com/ahmedhanbal/anykernel "$ANYKERNEL_DIR"
             fi
@@ -169,6 +181,16 @@ jobs:
             rm -rf "$ANYKERNEL_DIR/.git"
 
           done
+
+      # --------------------------
+      # Save Clang Cache always
+      # --------------------------
+      - name: Save Clang Cache
+        if: always()
+        uses: actions/cache@v3
+        with:
+          path: clang
+          key: clang-r563880c
 
       # --------------------------
       # Timestamp
