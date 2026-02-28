@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build script: base (16.0-perf) + suNext (16.0-perf-ksun)
+# Build script: base (16.0-perf) + suNext (16.0-perf-ksun) + susNext (16.0-perf-ksun-susfs)
 set -e
 
 # --------------------------
@@ -55,8 +55,8 @@ CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 # Variants to build
 # --------------------------
 if [ "$TARGET" == "all" ]; then
-  VARIANTS=("base" "suNext")
-elif [ "$TARGET" == "base" ] || [ "$TARGET" == "suNext" ]; then
+  VARIANTS=("susNext" "suNext" "base")
+elif [ "$TARGET" == "base" ] || [ "$TARGET" == "suNext" ] || [ "$TARGET" == "susNext" ]; then
   VARIANTS=("$TARGET")
 else
   echo "Error: Invalid variant '$TARGET'"
@@ -70,8 +70,9 @@ fi
 # --------------------------
 get_branch() {
   case "$1" in
-    base)   echo "16.0-perf" ;;
+    base)   echo "16.0-perf-ksun" ;; # we will just disable ksu in config
     suNext) echo "16.0-perf-ksun" ;;
+    susNext) echo "16.0-perf-ksun-susfs" ;;
   esac
 }
 
@@ -96,7 +97,21 @@ for VARIANT in "${VARIANTS[@]}"; do
 
   echo "Switching to branch: $BRANCH"
   git checkout "$BRANCH"
+	# ---------------------------------
+	# Switch KernelSU-Next branch
+	# ---------------------------------
+	if [ "$VARIANT" == "suNext" ]; then
+  	echo "Switching KernelSU-Next to legacy"
+	  pushd KernelSU-Next > /dev/null || { echo "KernelSU-Next folder missing!"; exit 1; }
+	  git switch legacy
+	  popd > /dev/null
 
+	elif [ "$VARIANT" == "susNext" ]; then
+  	echo "Switching KernelSU-Next to legacy_susfs"
+	  pushd KernelSU-Next > /dev/null || { echo "KernelSU-Next folder missing!"; exit 1; }
+  	git switch legacy_susfs
+	  popd > /dev/null
+	fi
   # --------------------------
   # Defconfig
   # --------------------------
@@ -110,18 +125,20 @@ for VARIANT in "${VARIANTS[@]}"; do
   # --------------------------
   # KernelSU config only for suNext
   # --------------------------
-  if [ "$VARIANT" == "suNext" ]; then
+  if [ "$VARIANT" == "suNext" ] || [ "$VARIANT" == "susNext" ]; then
     echo "Enabling KernelSU..."
 
     ./scripts/config --file "$OUTDIR/.config" -e CONFIG_KSU
-    ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_MANUAL_HOOK
+    ./scripts/config --file "$OUTDIR/.config" -e CONFIG_KSU_MANUAL_HOOK
     ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_ALLOWLIST_WORKAROUND
     ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_DEBUG
-    ./scripts/config --file "$OUTDIR/.config" -e CONFIG_KSU_KPROBES_HOOK
-
+    ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_KPROBES_HOOK
+    ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_SUSFS_TRY_UMOUNT
+    if [ "$VARIANT" == "suNext" ]; then
+        ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_SUSFS
+    fi
   else
     echo "Disabling KernelSU..."
-
     ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU
   fi
 
@@ -146,7 +163,7 @@ for VARIANT in "${VARIANTS[@]}"; do
   # Patch kernel.string in anykernel.sh
   # --------------------------
   echo "Patching anykernel.sh kernel string..."
-  sed -i "s/^kernel.string=.*/kernel.string=4.19.325-hanbal-gforce-$VARIANT/" \
+  sed -i "s/^kernel.string=.*/kernel.string=hanbal-gforce-$VARIANT/" \
     "$ANYKERNEL_DIR/anykernel.sh"
 
   # --------------------------
