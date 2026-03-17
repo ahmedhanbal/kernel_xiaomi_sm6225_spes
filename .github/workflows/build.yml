@@ -120,7 +120,7 @@ jobs:
             if [ "$VARIANT" = "suNext" ] || [ "$VARIANT" = "susNext" ]; then
               echo "Cloning KernelSU-Next..."
               rm -rf KernelSU-Next
-              git clone https://github.com/ahmedhanbal/KernelSU-Next.git
+              git clone https://github.com/KernelSU-Next/KernelSU-Next.git
 
               cd KernelSU-Next
               if [ "$VARIANT" = "suNext" ]; then
