@@ -1,5 +1,4 @@
 #!/bin/bash
-# Build script: base (16.0-perf) + suNext (16.0-perf-ksun) + susNext (16.0-perf-ksun-susfs)
 set -e
 
 # --------------------------
@@ -11,22 +10,8 @@ if [ -z "$1" ]; then
   echo "Usage:"
   echo "  ./build.sh base"
   echo "  ./build.sh suNext"
+  echo "  ./build.sh susNext"
   echo "  ./build.sh all"
-  exit 1
-fi
-
-# --------------------------
-# Git Clean Check
-# --------------------------
-if [ -n "$(git status --porcelain)" ]; then
-  echo "Error: You have uncommitted changes in your kernel tree!"
-  echo
-  echo "Please commit or stash them before running this script."
-  echo
-  echo "Run one of these:"
-  echo "  git add . && git commit -m \"save\""
-  echo "  git stash"
-  echo
   exit 1
 fi
 
@@ -66,17 +51,6 @@ else
 fi
 
 # --------------------------
-# Branch mapping
-# --------------------------
-get_branch() {
-  case "$1" in
-    base)   echo "16.0-perf-ksun" ;; # we will just disable ksu in config
-    suNext) echo "16.0-perf-ksun" ;;
-    susNext) echo "16.0-perf-ksun-susfs" ;;
-  esac
-}
-
-# --------------------------
 # Clone AnyKernel once
 # --------------------------
 if [ ! -d "anykernel-template" ]; then
@@ -93,7 +67,7 @@ for VARIANT in "${VARIANTS[@]}"; do
   echo " Building Variant: $VARIANT"
   echo "========================================="
 
-  BRANCH=$(get_branch "$VARIANT")
+  BRANCH="16.0-perf"
 
   echo "Switching to branch: $BRANCH"
   git checkout "$BRANCH"
@@ -101,16 +75,11 @@ for VARIANT in "${VARIANTS[@]}"; do
 	# Switch KernelSU-Next branch
 	# ---------------------------------
 	if [ "$VARIANT" == "suNext" ]; then
-  	echo "Switching KernelSU-Next to legacy"
-	  pushd KernelSU-Next > /dev/null || { echo "KernelSU-Next folder missing!"; exit 1; }
-	  git switch legacy
-	  popd > /dev/null
-
+ 	     echo "Switching KernelSU-Next to legacy"
+             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 	elif [ "$VARIANT" == "susNext" ]; then
-  	echo "Switching KernelSU-Next to legacy_susfs"
-	  pushd KernelSU-Next > /dev/null || { echo "KernelSU-Next folder missing!"; exit 1; }
-  	git switch legacy_susfs
-	  popd > /dev/null
+             echo "Switching KernelSU-Next to legacy_susfs"
+             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy-susfs
 	fi
   # --------------------------
   # Defconfig
@@ -125,23 +94,24 @@ for VARIANT in "${VARIANTS[@]}"; do
   # --------------------------
   # KernelSU config only for suNext
   # --------------------------
-  if [ "$VARIANT" == "suNext" ] || [ "$VARIANT" == "susNext" ]; then
-    echo "Enabling KernelSU..."
+  case "$VARIANT" in
+    suNext|susNext)
+       scripts/config --file out/.config -e CONFIG_KSU
+       scripts/config --file out/.config -d CONFIG_KSU_MANUAL_HOOK
+       scripts/config --file out/.config -d CONFIG_KSU_ALLOWLIST_WORKAROUND
+       scripts/config --file out/.config -d CONFIG_KSU_DEBUG
+       scripts/config --file out/.config -e CONFIG_KSU_KPROBES_HOOK
 
-    ./scripts/config --file "$OUTDIR/.config" -e CONFIG_KSU
-    ./scripts/config --file "$OUTDIR/.config" -e CONFIG_KSU_MANUAL_HOOK
-    ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_ALLOWLIST_WORKAROUND
-    ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_DEBUG
-    ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_KPROBES_HOOK
-    ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_SUSFS_TRY_UMOUNT
-    if [ "$VARIANT" == "suNext" ]; then
-        ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU_SUSFS
-    fi
-  else
-    echo "Disabling KernelSU..."
-    ./scripts/config --file "$OUTDIR/.config" -d CONFIG_KSU
-  fi
-
+       if [ "$VARIANT" = "suNext" ]; then
+         scripts/config --file out/.config -d CONFIG_KSU_SUSFS
+       else
+         scripts/config --file out/.config -d CONFIG_KSU_SUSFS_TRY_UMOUNT
+       fi
+       ;;
+    *)
+       scripts/config --file out/.config -d CONFIG_KSU
+       ;;
+    esac
   # --------------------------
   # Compile Kernel
   # --------------------------

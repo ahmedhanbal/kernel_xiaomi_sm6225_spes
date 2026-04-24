@@ -58,7 +58,7 @@ jobs:
           if [ ! -d clang/bin ]; then
             mkdir -p clang
             curl -L \
-              https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-r563880c.tar.gz \
+              https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-r584948.tar.gz \
               | tar -xz -C clang
           fi
           echo "$PWD/clang/bin" >> $GITHUB_PATH
@@ -102,17 +102,7 @@ jobs:
             # --------------------------
             # Branch mapping
             # --------------------------
-            if [ "$VARIANT" = "base" ]; then
-              BRANCH="16.0-perf-ksun"
-            elif [ "$VARIANT" = "suNext" ]; then
-              BRANCH="16.0-perf-ksun"
-            elif [ "$VARIANT" = "susNext" ]; then
-              BRANCH="16.0-perf-ksun-susfs"
-            fi
-
-            echo "Fetching branch: $BRANCH"
-            git fetch --depth=1 origin "$BRANCH"
-            git checkout --force FETCH_HEAD
+            BRANCH="16.0-perf"
 
             # --------------------------
             # Clone KernelSU-Next (only for suNext/susNext)
@@ -126,7 +116,7 @@ jobs:
               if [ "$VARIANT" = "suNext" ]; then
                   git checkout --force legacy
               else
-                  git checkout --force legacy_susfs
+                  git checkout --force legacy-susfs
               fi
               cd ..
 
@@ -142,20 +132,24 @@ jobs:
             # --------------------------
             # KernelSU Config
             # --------------------------
-            if [ "$VARIANT" = "suNext" ] || [ "$VARIANT" = "susNext" ]; then
-              scripts/config --file out/.config -e CONFIG_KSU
-              scripts/config --file out/.config -e CONFIG_KSU_MANUAL_HOOK
-              scripts/config --file out/.config -d CONFIG_KSU_ALLOWLIST_WORKAROUND
-              scripts/config --file out/.config -d CONFIG_KSU_DEBUG
-              scripts/config --file out/.config -d CONFIG_KSU_KPROBES_HOOK
-              scripts/config --file out/.config -d CONFIG_KSU_SUSFS_TRY_UMOUNT
+            case "$VARIANT" in
+            suNext|susNext)
+                   scripts/config --file out/.config -e CONFIG_KSU
+                   scripts/config --file out/.config -e CONFIG_KSU_MANUAL_HOOK
+                   scripts/config --file out/.config -d CONFIG_KSU_ALLOWLIST_WORKAROUND
+                   scripts/config --file out/.config -d CONFIG_KSU_DEBUG
+                   scripts/config --file out/.config -d CONFIG_KSU_KPROBES_HOOK
 
-              if [ "$VARIANT" = "suNext" ]; then
-                scripts/config --file out/.config -d CONFIG_KSU_SUSFS
-              fi
-            else
-              scripts/config --file out/.config -d CONFIG_KSU
-            fi
+                   if [ "$VARIANT" = "suNext" ]; then
+                      scripts/config --file out/.config -d CONFIG_KSU_SUSFS
+                   else
+                      scripts/config --file out/.config -d CONFIG_KSU_SUSFS_TRY_UMOUNT
+                   fi
+                   ;;
+            *)
+                   scripts/config --file out/.config -d CONFIG_KSU
+                   ;;
+            esac
 
             make O=out olddefconfig
 
