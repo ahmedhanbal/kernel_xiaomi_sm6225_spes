@@ -109,7 +109,7 @@ for VARIANT in "${VARIANTS[@]}"; do
 	elif [ "$VARIANT" == "susNext" ]; then
   	echo "Switching KernelSU-Next to legacy_susfs"
 	  pushd KernelSU-Next > /dev/null || { echo "KernelSU-Next folder missing!"; exit 1; }
-  	git switch legacy_susfs
+  	git switch legacy-susfs
 	  popd > /dev/null
 	fi
   # --------------------------
