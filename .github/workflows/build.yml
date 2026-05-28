@@ -10,8 +10,7 @@ on:
         type: choice
         options:
           - base
-          - suNext
-          - susNext
+          - su
           - all
 
 jobs:
@@ -82,7 +81,7 @@ jobs:
           TARGET="${{ github.event.inputs.variant }}"
 
           if [ "$TARGET" = "all" ]; then
-            VARIANTS=("susNext" "suNext" "base")
+            VARIANTS=("su" "base")
           else
             VARIANTS=("$TARGET")
           fi
@@ -102,24 +101,15 @@ jobs:
             # --------------------------
             # Branch mapping
             # --------------------------
-            BRANCH="16.0-perf"
+            BRANCH="16.0-perf-ksu"
 
             # --------------------------
-            # Clone KernelSU-Next (only for suNext/susNext)
+            # Clone KernelSU (only for su )
             # --------------------------
-            if [ "$VARIANT" = "suNext" ] || [ "$VARIANT" = "susNext" ]; then
-              echo "Cloning KernelSU-Next..."
-              rm -rf KernelSU-Next
-              git clone https://github.com/KernelSU-Next/KernelSU-Next.git
-
-              cd KernelSU-Next
-              if [ "$VARIANT" = "suNext" ]; then
-                  git checkout --force legacy
-              else
-                  git checkout --force legacy-susfs
-              fi
-              cd ..
-
+            if [ "$VARIANT" = "su" ]; then
+              echo "Cloning KernelSU"
+              rm -rf KernelSU
+              curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -
             fi
 
             # --------------------------
@@ -128,28 +118,15 @@ jobs:
             make O=out vendor/spes-stock_defconfig vendor/xiaomi/spes.config
 
             LOCALVERSION="-$VARIANT"
-
-            # --------------------------
-            # KernelSU Config
-            # --------------------------
-            case "$VARIANT" in
-            suNext|susNext)
-                   scripts/config --file out/.config -e CONFIG_KSU
-                   scripts/config --file out/.config -e CONFIG_KSU_MANUAL_HOOK
-                   scripts/config --file out/.config -d CONFIG_KSU_ALLOWLIST_WORKAROUND
-                   scripts/config --file out/.config -d CONFIG_KSU_DEBUG
-                   scripts/config --file out/.config -d CONFIG_KSU_KPROBES_HOOK
-
-                   if [ "$VARIANT" = "suNext" ]; then
-                      scripts/config --file out/.config -d CONFIG_KSU_SUSFS
-                   else
-                      scripts/config --file out/.config -d CONFIG_KSU_SUSFS_TRY_UMOUNT
-                   fi
-                   ;;
-            *)
-                   scripts/config --file out/.config -d CONFIG_KSU
-                   ;;
-            esac
+            if [ "$VARIANT" = "base" ]; then
+              scripts/config --file out/.config -d CONFIG_KSU
+              scripts/config --file out/.config -d CONFIG_KSU_TAMPER_SYSCALL_TABLE
+              scripts/config --file out/.config -d CONFIG_KSU_FEATURE_SULOG
+              scripts/config --file out/.config -d CONFIG_KSU_FEATURE_ADBROOT
+              scripts/config --file out/.config -d CONFIG_KSU_DEBUG
+              scripts/config --file out/.config -d CONFIG_KSU_THRONE_TRACKER_ALWAYS_THREADED
+              scripts/config --file out/.config -d CONFIG_KSU_LSM_SECURITY_HOOKS
+            fi
 
             make O=out olddefconfig
 
@@ -203,16 +180,9 @@ jobs:
           name: hanbal-gforce-base-${{ steps.timestamp.outputs.time }}
           path: anykernel-base/
 
-      - name: Upload suNext
-        if: ${{ github.event.inputs.variant == 'suNext' || github.event.inputs.variant == 'all' }}
+      - name: Upload su
+        if: ${{ github.event.inputs.variant == 'su' || github.event.inputs.variant == 'all' }}
         uses: actions/upload-artifact@v4
         with:
-          name: hanbal-gforce-suNext-${{ steps.timestamp.outputs.time }}
-          path: anykernel-suNext/
-
-      - name: Upload susNext
-        if: ${{ github.event.inputs.variant == 'susNext' || github.event.inputs.variant == 'all' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: hanbal-gforce-susNext-${{ steps.timestamp.outputs.time }}
-          path: anykernel-susNext/
+          name: hanbal-gforce-su-${{ steps.timestamp.outputs.time }}
+          path: anykernel-su/

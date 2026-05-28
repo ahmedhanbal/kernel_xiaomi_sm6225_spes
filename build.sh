@@ -9,8 +9,7 @@ if [ -z "$1" ]; then
   echo
   echo "Usage:"
   echo "  ./build.sh base"
-  echo "  ./build.sh suNext"
-  echo "  ./build.sh susNext"
+  echo "  ./build.sh su"
   echo "  ./build.sh all"
   exit 1
 fi
@@ -40,13 +39,13 @@ CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 # Variants to build
 # --------------------------
 if [ "$TARGET" == "all" ]; then
-  VARIANTS=("susNext" "suNext" "base")
-elif [ "$TARGET" == "base" ] || [ "$TARGET" == "suNext" ] || [ "$TARGET" == "susNext" ]; then
+  VARIANTS=("su" "base")
+elif [ "$TARGET" == "base" ] || [ "$TARGET" == "su" ]; then
   VARIANTS=("$TARGET")
 else
   echo "Error: Invalid variant '$TARGET'"
   echo
-  echo "Valid options: base | suNext | all"
+  echo "Valid options: base | su | all"
   exit 1
 fi
 
@@ -67,19 +66,16 @@ for VARIANT in "${VARIANTS[@]}"; do
   echo " Building Variant: $VARIANT"
   echo "========================================="
 
-  BRANCH="16.0-perf"
+  BRANCH="16.0-perf-ksu"
 
   echo "Switching to branch: $BRANCH"
   git checkout "$BRANCH"
 	# ---------------------------------
 	# Switch KernelSU-Next branch
 	# ---------------------------------
-	if [ "$VARIANT" == "suNext" ]; then
+	if [ "$VARIANT" == "su" ]; then
  	     echo "Switching KernelSU-Next to legacy"
-             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
-	elif [ "$VARIANT" == "susNext" ]; then
-             echo "Switching KernelSU-Next to legacy_susfs"
-             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy-susfs
+             curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -
 	fi
   # --------------------------
   # Defconfig
@@ -92,26 +88,17 @@ for VARIANT in "${VARIANTS[@]}"; do
   LOCALV="-$VARIANT"
 
   # --------------------------
-  # KernelSU config only for suNext
+  # KernelSU config only for su
   # --------------------------
-  case "$VARIANT" in
-    suNext|susNext)
-       scripts/config --file out/.config -e CONFIG_KSU
-       scripts/config --file out/.config -d CONFIG_KSU_MANUAL_HOOK
-       scripts/config --file out/.config -d CONFIG_KSU_ALLOWLIST_WORKAROUND
-       scripts/config --file out/.config -d CONFIG_KSU_DEBUG
-       scripts/config --file out/.config -e CONFIG_KSU_KPROBES_HOOK
-
-       if [ "$VARIANT" = "suNext" ]; then
-         scripts/config --file out/.config -d CONFIG_KSU_SUSFS
-       else
-         scripts/config --file out/.config -d CONFIG_KSU_SUSFS_TRY_UMOUNT
-       fi
-       ;;
-    *)
-       scripts/config --file out/.config -d CONFIG_KSU
-       ;;
-    esac
+  if [ "$VARIANT" = "base" ]; then
+	scripts/config --file out/.config -d CONFIG_KSU
+        scripts/config --file out/.config -d CONFIG_KSU_TAMPER_SYSCALL_TABLE
+        scripts/config --file out/.config -d CONFIG_KSU_FEATURE_SULOG
+        scripts/config --file out/.config -d CONFIG_KSU_FEATURE_ADBROOT
+        scripts/config --file out/.config -d CONFIG_KSU_DEBUG
+        scripts/config --file out/.config -d CONFIG_KSU_THRONE_TRACKER_ALWAYS_THREADED
+        scripts/config --file out/.config -d CONFIG_KSU_LSM_SECURITY_HOOKS
+  fi
   # --------------------------
   # Compile Kernel
   # --------------------------
