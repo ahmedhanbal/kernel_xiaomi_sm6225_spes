@@ -115,12 +115,11 @@ jobs:
             # --------------------------
             # Defconfig
             # --------------------------
-            make O=out vendor/spes-stock_defconfig vendor/xiaomi/spes.config
-
+            make O=out vendor/spes-stock_defconfig vendor/xiaomi/spes.config          
             LOCALVERSION="-$VARIANT"
+            scripts/config --file out/.config -d CONFIG_KSU_TAMPER_SYSCALL_TABLE
             if [ "$VARIANT" = "base" ]; then
               scripts/config --file out/.config -d CONFIG_KSU
-              scripts/config --file out/.config -d CONFIG_KSU_TAMPER_SYSCALL_TABLE
               scripts/config --file out/.config -d CONFIG_KSU_FEATURE_SULOG
               scripts/config --file out/.config -d CONFIG_KSU_FEATURE_ADBROOT
               scripts/config --file out/.config -d CONFIG_KSU_DEBUG
