@@ -1244,6 +1244,39 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
 	return 0;
 }
 
+/*
+ * Global DRM notifier: fires for any panel, including replacement Incell
+ * LCDs where active_panel (panel1/panel2) fails to resolve. Needed
+ * on spes when the original panel is replaced by a third-party one.
+ */
+#if defined(CONFIG_DRM)
+static int fts_drm_global_notifier(struct notifier_block *self,
+				   unsigned long event, void *data)
+{
+	struct drm_notify_data *evdata = data;
+	int *blank;
+
+	if (!evdata || !evdata->data)
+		return 0;
+
+	if (event != DRM_EVENT_BLANK)
+		return 0;
+
+	blank = evdata->data;
+	FTS_INFO("DRM global event:%lu, blank:%d", event, *blank);
+
+	if (*blank == DRM_BLANK_UNBLANK) {
+		if (fts_data && fts_data->suspended)
+			queue_work(fts_data->ts_workqueue, &fts_data->resume_work);
+	} else if (*blank == DRM_BLANK_POWERDOWN) {
+		if (fts_data && !fts_data->suspended)
+			fts_ts_suspend(fts_data->dev);
+	}
+
+	return 0;
+}
+#endif
+
 #if defined(CONFIG_DRM)
 static void fts_resume_work(struct work_struct *work)
 {
@@ -1500,6 +1533,12 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
 			&ts_data->fb_notif) < 0)
 		FTS_ERROR("register notifier failed!\n");
 
+	/* Global DRM notifier: rescues resume when active_panel is NULL
+	 * (replacement Incell panel not matching panel1/panel2 DT nodes). */
+	ts_data->drm_notif.notifier_call = fts_drm_global_notifier;
+	if (drm_register_client(&ts_data->drm_notif))
+		FTS_ERROR("drm_register_client fail");
+
 #elif defined(CONFIG_FB)
 	if (ts_data->ts_workqueue) {
 		INIT_WORK(&ts_data->resume_work, fts_resume_work);
@@ -1509,6 +1548,11 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
 	if (ret) {
 		FTS_ERROR("[FB]Unable to register fb_notifier: %d", ret);
 	}
+
+	/* Global DRM notifier fallback for CONFIG_FB builds */
+	ts_data->drm_notif.notifier_call = fts_drm_global_notifier;
+	if (drm_register_client(&ts_data->drm_notif))
+		FTS_ERROR("drm_register_client fail");
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 	ts_data->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + FTS_SUSPEND_LEVEL;
 	ts_data->early_suspend.suspend = fts_ts_early_suspend;
@@ -1580,6 +1624,8 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 #elif defined(CONFIG_FB)
 	if (fb_unregister_client(&ts_data->fb_notif))
 		FTS_ERROR("Error occurred while unregistering fb_notifier.");
+
+	drm_unregister_client(&ts_data->drm_notif);
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
 	unregister_early_suspend(&ts_data->early_suspend);
 #endif
