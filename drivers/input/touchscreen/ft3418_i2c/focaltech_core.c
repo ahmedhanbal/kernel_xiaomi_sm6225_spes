@@ -2260,7 +2260,7 @@ static int fts_set_cur_value(int fts_mode, int fts_value)
 	uint8_t temp_value = 0;
 	uint8_t ret = 0;
 	uint8_t reg_value = 0;
-	if (fts_mode >= Touch_Mode_NUM && fts_mode < 0) {
+	if (fts_mode >= Touch_Mode_NUM || fts_mode < 0) {
 		FTS_ERROR("fts mode is error:%d", fts_mode);
 		return -EINVAL;
 	} else if (xiaomi_touch_interfaces.touch_mode[fts_mode][SET_CUR_VALUE] >
