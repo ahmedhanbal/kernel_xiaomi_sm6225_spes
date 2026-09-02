@@ -11,7 +11,6 @@ on:
         options:
           - base
           - suNext
-          - susNext
           - all
 
 jobs:
@@ -48,7 +47,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: clang
-          key: clang-r563880c
+          key: clang-r584948
 
       # --------------------------
       # Setup Clang
@@ -78,11 +77,12 @@ jobs:
           export LLVM_IAS=1
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-
+          export KBUILD_BUILD_USER=ahmed
+          export KBUILD_BUILD_HOST=AAZ-PC
           TARGET="${{ github.event.inputs.variant }}"
 
           if [ "$TARGET" = "all" ]; then
-            VARIANTS=("susNext" "suNext" "base")
+            VARIANTS=("suNext" "base")
           else
             VARIANTS=("$TARGET")
           fi
@@ -105,21 +105,16 @@ jobs:
             BRANCH="16.0-perf"
 
             # --------------------------
-            # Clone KernelSU-Next (only for suNext/susNext)
+            # Clone KernelSU-Next (only for suNext)
             # --------------------------
-            if [ "$VARIANT" = "suNext" ] || [ "$VARIANT" = "susNext" ]; then
+            if [ "$VARIANT" = "suNext" ]; then
               echo "Cloning KernelSU-Next..."
               rm -rf KernelSU-Next
               git clone https://github.com/KernelSU-Next/KernelSU-Next.git
 
               cd KernelSU-Next
-              if [ "$VARIANT" = "suNext" ]; then
-                  git checkout --force legacy
-              else
-                  git checkout --force legacy-susfs
-              fi
+              git checkout --force legacy
               cd ..
-
             fi
 
             # --------------------------
@@ -132,25 +127,15 @@ jobs:
             # --------------------------
             # KernelSU Config
             # --------------------------
-            case "$VARIANT" in
-            suNext|susNext)
+            if [ "$VARIANT" = "suNext" ]; then
                    scripts/config --file out/.config -e CONFIG_KSU
                    scripts/config --file out/.config -e CONFIG_KSU_MANUAL_HOOK
                    scripts/config --file out/.config -d CONFIG_KSU_ALLOWLIST_WORKAROUND
                    scripts/config --file out/.config -d CONFIG_KSU_DEBUG
                    scripts/config --file out/.config -d CONFIG_KSU_KPROBES_HOOK
-
-                   if [ "$VARIANT" = "suNext" ]; then
-                      scripts/config --file out/.config -d CONFIG_KSU_SUSFS
-                   else
-                      scripts/config --file out/.config -d CONFIG_KSU_SUSFS_TRY_UMOUNT
-                   fi
-                   ;;
-            *)
+            else
                    scripts/config --file out/.config -d CONFIG_KSU
-                   ;;
-            esac
-
+            fi
             make O=out olddefconfig
 
             # --------------------------
@@ -184,7 +169,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: clang
-          key: clang-r563880c
+          key: clang-r584948
 
       # --------------------------
       # Timestamp
@@ -209,10 +194,3 @@ jobs:
         with:
           name: hanbal-gforce-suNext-${{ steps.timestamp.outputs.time }}
           path: anykernel-suNext/
-
-      - name: Upload susNext
-        if: ${{ github.event.inputs.variant == 'susNext' || github.event.inputs.variant == 'all' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: hanbal-gforce-susNext-${{ steps.timestamp.outputs.time }}
-          path: anykernel-susNext/
