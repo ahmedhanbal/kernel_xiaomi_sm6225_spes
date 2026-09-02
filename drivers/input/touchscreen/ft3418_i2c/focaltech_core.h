@@ -240,6 +240,8 @@ struct fts_ts_data {
 #endif
 #if defined(CONFIG_FB) || defined(CONFIG_DRM)
     struct notifier_block fb_notif;
+    struct notifier_block drm_notif;
+    bool in_aod_lp;
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
     struct early_suspend early_suspend;
 #endif
