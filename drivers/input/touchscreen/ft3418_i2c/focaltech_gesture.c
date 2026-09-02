@@ -275,7 +275,7 @@ static void fts_gesture_report(struct input_dev *input_dev, int gesture_id)
         input_sync(input_dev);
         input_report_key(input_dev, gesture, 0);
         input_sync(input_dev);
-	} else if ((gesture == KEY_GESTURE_U) && fts_data->gesture_mode) {
+	} else if ((gesture == KEY_GESTURE_U) && (fts_data->gesture_mode || fts_data->aod_changed)) {
         FTS_DEBUG("Gesture Code=%d", gesture);
         input_report_key(input_dev, gesture, 1);
         input_sync(input_dev);
@@ -352,7 +352,7 @@ int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data)
 
 void fts_gesture_recovery(struct fts_ts_data *ts_data)
 {
-    if (ts_data->gesture_mode && ts_data->suspended) {
+    if ((ts_data->gesture_mode || ts_data->aod_changed) && ts_data->suspended) {
         FTS_DEBUG("gesture recovery...");
         fts_write_reg(0xD1, 0xFF);
         fts_write_reg(0xD2, 0xFF);

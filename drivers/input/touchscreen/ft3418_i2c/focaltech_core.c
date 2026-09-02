@@ -89,18 +89,17 @@ struct fts_ts_data *fts_data;
 int lct_fts_tp_gesture_callback(bool flag)
 {
 	struct fts_ts_data *ts_data = fts_data;
-	if (ts_data->suspended) {
-		//delay_gesture = true;
-		FTS_INFO("The gesture mode will be %s the next time you wakes up.", flag ? "enabled" : "disabled");
-		return -EPERM;
-	}
 	set_lct_tp_gesture_status(flag);
-	//set_lcd_reset_gpio_keep_high(flag);
 
-	if (flag)
+	if (flag) {
 		ts_data->gesture_mode = ENABLE;
-	else
+		if (ts_data->suspended)
+			fts_gesture_suspend(ts_data);
+	} else {
 		ts_data->gesture_mode = DISABLE;
+		if (ts_data->suspended && !ts_data->aod_changed)
+			fts_gesture_resume(ts_data);
+	}
 	return 0;
 }
 
@@ -1392,6 +1391,49 @@ static void fts_resume_work(struct work_struct *work)
     fts_ts_resume(ts_data->dev);
 }
 
+static int fts_drm_global_notifier(struct notifier_block *self,
+                                   unsigned long event, void *data)
+{
+    struct drm_notify_data *evdata = data;
+    int *blank = NULL;
+    struct fts_ts_data *ts_data = container_of(self, struct fts_ts_data,
+                                  drm_notif);
+
+    if (!evdata || !evdata->data)
+        return 0;
+
+    if (event != DRM_EVENT_BLANK && event != DRM_EARLY_EVENT_BLANK)
+        return 0;
+
+    blank = evdata->data;
+    FTS_INFO("DRM global event:%lu, blank:%d", event, *blank);
+
+    switch (*blank) {
+    case DRM_BLANK_UNBLANK:
+        if (event == DRM_EVENT_BLANK) {
+            ts_data->in_aod_lp = false;
+            if (ts_data && ts_data->suspended)
+                queue_work(ts_data->ts_workqueue, &ts_data->resume_work);
+        }
+        break;
+    case DRM_BLANK_POWERDOWN:
+    case DRM_BLANK_LP1:
+    case DRM_BLANK_LP2:
+        if (event == DRM_EARLY_EVENT_BLANK) {
+            ts_data->in_aod_lp = true;
+            if (ts_data && !ts_data->suspended) {
+                cancel_work_sync(&ts_data->resume_work);
+                fts_ts_suspend(ts_data->dev);
+            }
+        }
+        break;
+    default:
+        break;
+    }
+
+    return 0;
+}
+
 #if defined(CONFIG_FB)
 static struct drm_panel *active_panel;
 
@@ -1465,7 +1507,7 @@ static int drm_check_dt2(struct device_node *np)
 static int fb_notifier_callback(struct notifier_block *self,
                                 unsigned long event, void *data)
 {
-    struct fb_event *evdata = data;
+    struct drm_panel_notifier *evdata = data;
     int *blank = NULL;
     struct fts_ts_data *ts_data = container_of(self, struct fts_ts_data,
                                   fb_notif);
@@ -1486,12 +1528,23 @@ static int fb_notifier_callback(struct notifier_block *self,
     switch (*blank) {
     case DRM_PANEL_BLANK_UNBLANK:
         if (DRM_PANEL_EARLY_EVENT_BLANK == event) {
-            FTS_INFO("resume: event = %lu, not care\n", event);
+            FTS_INFO("resume: event = %lu, full unblank\n", event);
+            ts_data->in_aod_lp = false;
         } else if (DRM_PANEL_EVENT_BLANK == event) {
-            queue_work(fts_data->ts_workqueue, &fts_data->resume_work);
+            if (ts_data->in_aod_lp) {
+                FTS_INFO("panel is in AOD/LP mode, ignore unblank resume\n");
+            } else {
+                queue_work(fts_data->ts_workqueue, &fts_data->resume_work);
+            }
         }
         break;
+    case DRM_PANEL_BLANK_LP:
+        ts_data->in_aod_lp = true;
+        cancel_work_sync(&fts_data->resume_work);
+        fts_ts_suspend(ts_data->dev);
+        break;
     case DRM_PANEL_BLANK_POWERDOWN:
+        ts_data->in_aod_lp = false;
         if (DRM_PANEL_EARLY_EVENT_BLANK == event) {
             cancel_work_sync(&fts_data->resume_work);
             fts_ts_suspend(ts_data->dev);
@@ -1541,7 +1594,7 @@ static int drm_check_dt(struct device_node *np)
 static int drm_notifier_callback(struct notifier_block *self,
                                  unsigned long event, void *data)
 {
-    struct msm_drm_notifier *evdata = data;
+    struct drm_panel_notifier *evdata = data;
     int *blank = NULL;
     struct fts_ts_data *ts_data = container_of(self, struct fts_ts_data,
                                   fb_notif);
@@ -1558,16 +1611,27 @@ static int drm_notifier_callback(struct notifier_block *self,
     }
 
     blank = evdata->data;
-    FTS_INFO("DRM event:%lu,blank:%d", event, *blank);
+    FTS_INFO("DRM panel event:%lu,blank:%d", event, *blank);
     switch (*blank) {
     case DRM_PANEL_BLANK_UNBLANK:
         if (DRM_PANEL_EARLY_EVENT_BLANK == event) {
-            FTS_INFO("resume: event = %lu, not care\n", event);
+            FTS_INFO("resume: event = %lu, full unblank\n", event);
+            ts_data->in_aod_lp = false;
         } else if (DRM_PANEL_EVENT_BLANK == event) {
-            queue_work(fts_data->ts_workqueue, &fts_data->resume_work);
+            if (ts_data->in_aod_lp) {
+                FTS_INFO("panel is in AOD/LP mode, ignore unblank resume\n");
+            } else {
+                queue_work(fts_data->ts_workqueue, &fts_data->resume_work);
+            }
         }
         break;
+    case DRM_PANEL_BLANK_LP:
+        ts_data->in_aod_lp = true;
+        cancel_work_sync(&fts_data->resume_work);
+        fts_ts_suspend(ts_data->dev);
+        break;
     case DRM_PANEL_BLANK_POWERDOWN:
+        ts_data->in_aod_lp = false;
         if (DRM_PANEL_EARLY_EVENT_BLANK == event) {
             cancel_work_sync(&fts_data->resume_work);
             fts_ts_suspend(ts_data->dev);
@@ -1576,7 +1640,7 @@ static int drm_notifier_callback(struct notifier_block *self,
         }
         break;
     default:
-        FTS_INFO("DRM BLANK(%d) do not need process\n", *blank);
+        FTS_INFO("DRM panel BLANK(%d) do not need process\n", *blank);
         break;
     }
 
@@ -1841,6 +1905,9 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     if (ret) {
         FTS_ERROR("[FB]Unable to register fb_notifier: %d", ret);
     }
+    ts_data->drm_notif.notifier_call = fts_drm_global_notifier;
+    if (drm_register_client(&ts_data->drm_notif))
+        FTS_ERROR("[DRM]drm_register_client fail\n");
 #elif defined(CONFIG_DRM)
     FTS_ERROR("start drm_notifier_callback_register");
     ts_data->fb_notif.notifier_call = drm_notifier_callback;
@@ -1857,6 +1924,9 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         FTS_ERROR("[DRM]Unable to register fb_notifier: %d\n", ret);
     }
 #endif
+    ts_data->drm_notif.notifier_call = fts_drm_global_notifier;
+    if (drm_register_client(&ts_data->drm_notif))
+        FTS_ERROR("[DRM]drm_register_client fail\n");
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
     ts_data->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + FTS_SUSPEND_LEVEL;
     ts_data->early_suspend.suspend = fts_ts_early_suspend;
@@ -1965,8 +2035,11 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 
 #if defined(CONFIG_FB)
     FTS_ERROR("start fb_unregister_client");
+    if (active_panel)
+        drm_panel_notifier_unregister(active_panel, &ts_data->fb_notif);
     if (fb_unregister_client(&ts_data->fb_notif))
         FTS_ERROR("[FB]Error occurred while unregistering fb_notifier.");
+    drm_unregister_client(&ts_data->drm_notif);
 #elif defined(CONFIG_DRM)
 #if defined(CONFIG_DRM_PANEL)
     if (active_panel)
@@ -1975,6 +2048,7 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
     if (msm_drm_unregister_client(&ts_data->fb_notif))
         FTS_ERROR("[DRM]Error occurred while unregistering fb_notifier.\n");
 #endif
+    drm_unregister_client(&ts_data->drm_notif);
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
     unregister_early_suspend(&ts_data->early_suspend);
 #endif
@@ -2089,13 +2163,14 @@ static int fts_ts_resume(struct device *dev)
     fts_esdcheck_resume();
 #endif
 
-    if (ts_data->gesture_mode) {
+    if (ts_data->gesture_mode || ts_data->aod_changed) {
         fts_gesture_resume(ts_data);
     } else {
 
     }
 
     ts_data->suspended = false;
+    ts_data->in_aod_lp = false;
 #if LCT_TP_WORK_EN
 		if (get_lct_tp_work_status())
 				fts_irq_enable();
