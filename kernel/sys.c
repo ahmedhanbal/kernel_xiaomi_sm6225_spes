@@ -689,8 +689,16 @@ error:
 	return retval;
 }
 
+#if defined(CONFIG_KSU) && !defined(CONFIG_KSU_KPROBES_HOOK)
+extern int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid);
+#endif
 SYSCALL_DEFINE3(setresuid, uid_t, ruid, uid_t, euid, uid_t, suid)
 {
+	long ret = __sys_setresuid(ruid, euid, suid);
+#if defined(CONFIG_KSU) && !defined(CONFIG_KSU_KPROBES_HOOK)
+       if (!ret)
+               ksu_handle_setresuid(ruid, euid, suid);
+#endif
 	return __sys_setresuid(ruid, euid, suid);
 }
 
