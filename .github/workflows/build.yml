@@ -118,6 +118,7 @@ jobs:
             make O=out vendor/spes-stock_defconfig vendor/xiaomi/spes.config          
             LOCALVERSION="-$VARIANT"
             scripts/config --file out/.config -d CONFIG_KSU_TAMPER_SYSCALL_TABLE
+            scripts/config --file out/.config -e CONFIG_KSU_SHELL_HAS_SU_ALWAYS
             if [ "$VARIANT" = "base" ]; then
               scripts/config --file out/.config -d CONFIG_KSU
               scripts/config --file out/.config -d CONFIG_KSU_FEATURE_SULOG
