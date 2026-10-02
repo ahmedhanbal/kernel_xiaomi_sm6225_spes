@@ -67,7 +67,7 @@ for VARIANT in "${VARIANTS[@]}"; do
   echo " Building Variant: $VARIANT"
   echo "========================================="
 
-  BRANCH="16.0-perf"
+  BRANCH="16.0-perf-ksun-susfs"
 
   echo "Switching to branch: $BRANCH"
   git checkout "$BRANCH"
@@ -76,10 +76,10 @@ for VARIANT in "${VARIANTS[@]}"; do
 	# ---------------------------------
 	if [ "$VARIANT" == "suNext" ]; then
  	     echo "Switching KernelSU-Next to legacy"
-             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+             curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/legacy-susfs-v2/kernel/setup.sh" | bash -s legacy-susfs-v2
 	elif [ "$VARIANT" == "susNext" ]; then
              echo "Switching KernelSU-Next to legacy_susfs"
-             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy-susfs
+             curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/legacy-susfs-v2/kernel/setup.sh" | bash -s legacy-susfs-v2
 	fi
   # --------------------------
   # Defconfig
@@ -104,8 +104,6 @@ for VARIANT in "${VARIANTS[@]}"; do
 
        if [ "$VARIANT" = "suNext" ]; then
          scripts/config --file out/.config -d CONFIG_KSU_SUSFS
-       else
-         scripts/config --file out/.config -d CONFIG_KSU_SUSFS_TRY_UMOUNT
        fi
        ;;
     *)
